@@ -1,0 +1,18 @@
+# Maintainer: EvarinthoSec
+pkgname=mtop-bin
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Cross-platform terminal system monitor'
+arch=('x86_64')
+url='https://github.com/EvarinthoSec/mtop'
+license=('MIT')
+depends=('glibc')
+makedepends=('libarchive')
+conflicts=('mtop')
+options=('!strip' '!debug')
+source=("https://github.com/EvarinthoSec/mtop/releases/download/v${pkgver}/mtop-linux-x86_64-${pkgver}.pkg.tar.zst")
+sha256sums=('d55058ba7e5bd6bd73aa5e031280bf7fbdbba693523a16960ddbc7cce5aa11cb')
+
+package() {
+  bsdtar -xpf "${srcdir}/mtop-linux-x86_64-${pkgver}.pkg.tar.zst" -C "${pkgdir}" usr
+}

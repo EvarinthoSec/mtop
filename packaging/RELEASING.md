@@ -21,3 +21,9 @@ To rebuild an already published tag after updating release tooling, run the `Rel
 ## First WinGet submission
 
 The release workflow always creates a versioned WinGet manifest artifact. For the first submission, download that artifact and submit its three YAML files to `microsoft/winget-pkgs` in the canonical `manifests/e/EvarinthoSec/mtop/<version>/` path. After the maintainers merge the package, configure `WINGET_TOKEN` so future releases can submit updates automatically.
+
+## AUR package (`mtop-bin`)
+
+The AUR recipe is maintained in `packaging/aur/PKGBUILD` with its generated `.SRCINFO`. It repackages the prebuilt Arch release asset and intentionally conflicts with the unrelated AUR package named `mtop`, because both install `/usr/bin/mtop`.
+
+For each release, update `pkgver` and the Arch asset's SHA-256, regenerate `.SRCINFO` with `makepkg --printsrcinfo`, then build and smoke-test the package in an Arch environment. Submit both files to the `mtop-bin` AUR Git repository using an SSH key registered with AUR. The command `yay -S mtop-bin` becomes available after AUR accepts the submission.

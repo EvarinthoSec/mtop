@@ -1,0 +1,16 @@
+pkgbase = mtop-bin
+	pkgdesc = Cross-platform terminal system monitor
+	pkgver = 1.0.0
+	pkgrel = 1
+	url = https://github.com/EvarinthoSec/mtop
+	arch = x86_64
+	license = MIT
+	makedepends = libarchive
+	depends = glibc
+	conflicts = mtop
+	options = !strip
+	options = !debug
+	source = https://github.com/EvarinthoSec/mtop/releases/download/v1.0.0/mtop-linux-x86_64-1.0.0.pkg.tar.zst
+	sha256sums = d55058ba7e5bd6bd73aa5e031280bf7fbdbba693523a16960ddbc7cce5aa11cb
+
+pkgname = mtop-bin
