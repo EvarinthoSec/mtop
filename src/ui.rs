@@ -1,12 +1,10 @@
-//! Terminal UI — ported from btop++ (Apache-2.0, aristocratos/btop).
+//! Terminal UI — mtop's Rust/Ratatui implementation, visually inspired by
+//! btop++ (aristocratos/btop), with selected rendering details adapted.
 //!
-//! Layout, graph symbols, meter glyphs, border helpers, and color constants
-//! derived from btop_draw.cpp, btop_theme.cpp, Symbols::graph_symbols, and
-//! calcSizes(). Translated to idiomatic Rust + Ratatui.
-//!
-//! Copyright notice for derived material:
+//! This file was modified and adapted by EvarinthoSec. Upstream attribution:
 //!   Copyright (C) 2021 by Jakob P. Liljenberg <jakob@qvantnet.com>
-//!   Licensed under the Apache License, Version 2.0.
+//!   Source material is under Apache License, Version 2.0; see
+//!   THIRD_PARTY_LICENSES/btop-Apache-2.0.txt.
 
 use std::collections::VecDeque;
 use std::io::{self, stdout};

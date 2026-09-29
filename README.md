@@ -213,9 +213,10 @@ The common collector degrades unavailable or permission-limited metrics to `N/A`
 
 ## License
 
-Licensed under either of:
+mtop is licensed under the MIT License; see [LICENSE](LICENSE).
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
-- MIT License ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/license/mit/>)
-
-at your option.
+The UI takes visual inspiration from btop++ and adapts selected rendering
+details. Its upstream copyright and Apache-2.0 attribution are retained in
+`src/ui.rs`; the Apache-2.0 license copy is included at
+[`THIRD_PARTY_LICENSES/btop-Apache-2.0.txt`](THIRD_PARTY_LICENSES/btop-Apache-2.0.txt)
+to satisfy the applicable redistribution notice requirements.
