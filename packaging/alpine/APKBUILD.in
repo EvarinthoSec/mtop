@@ -1,0 +1,31 @@
+pkgname=mtop
+pkgver=@PKGVER@
+pkgrel=0
+pkgdesc="Cross-platform terminal system monitor"
+url="https://launchpad.net/mtop-monitor"
+maintainer="EvarinthoSec"
+arch="x86_64"
+license="MIT"
+depends="musl"
+options="!check"
+subpackages="$pkgname-doc"
+source="mtop mtop.1 mtop.desktop LICENSE THIRD_PARTY_NOTICES.md btop-Apache-2.0.txt"
+
+build() {
+    :
+}
+
+package() {
+    install -Dm755 "$srcdir/mtop" "$pkgdir/usr/bin/mtop"
+    install -Dm644 "$srcdir/mtop.desktop" "$pkgdir/usr/share/applications/mtop.desktop"
+    install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/mtop/LICENSE"
+    install -Dm644 "$srcdir/THIRD_PARTY_NOTICES.md" \
+        "$pkgdir/usr/share/licenses/mtop/THIRD_PARTY_NOTICES.md"
+    install -Dm644 "$srcdir/btop-Apache-2.0.txt" \
+        "$pkgdir/usr/share/licenses/mtop/btop-Apache-2.0.txt"
+}
+
+doc() {
+    install -Dm644 "$srcdir/mtop.1" "$subpkgdir/usr/share/man/man1/mtop.1"
+    gzip -n -9 "$subpkgdir/usr/share/man/man1/mtop.1"
+}

@@ -76,15 +76,24 @@ That example installs into:
 
 The helper fails clearly when `target/release/mtop` is missing and touches only the packaged binary, man page, and desktop entry. It does not create or overwrite user configuration or secret files.
 
-### Debian and Ubuntu packages
+### Linux package managers
 
-Pushing a version tag such as `v1.2.3` runs the GitHub Actions release workflow. It publishes an amd64 `.deb` plus macOS Intel and Apple Silicon archives. Install the Debian package with:
+Pushing a version tag matching the workspace version builds amd64 packages for the main Linux distribution families. The release attaches package checksums in `SHA256SUMS`.
+
+| Package manager family | Release package | Install |
+| --- | --- | --- |
+| Debian / Ubuntu (`apt`) | `mtop_<version>_amd64.deb` | `sudo apt install ./mtop_<version>_amd64.deb` |
+| Fedora / RHEL / openSUSE (`dnf`, `yum`, `zypper`) | `mtop-<version>-1.x86_64.rpm` | `sudo dnf install ./mtop-<version>-1.x86_64.rpm` (or `sudo rpm -i ...`) |
+| Arch Linux (`pacman`) | `mtop-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U ./mtop-<version>-1-x86_64.pkg.tar.zst` |
+| Alpine (`apk`) | `mtop-<version>-r0.apk` and `mtop-doc-<version>-r0.apk` | `sudo install -m 0644 ./*.rsa.pub /etc/apk/keys/` then `sudo apk add ./mtop-<version>-r0.apk ./mtop-doc-<version>-r0.apk` |
+
+The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
+
+For other Linux distributions, install from a checkout with Rust 1.85 or newer:
 
 ```sh
-sudo apt install ./mtop_<version>_amd64.deb
+cargo install --path crates/mtop --locked
 ```
-
-The `.deb` requires `libc6 >= 2.35` (Ubuntu 22.04 or a compatible Debian-based distribution).
 
 The project is also listed on [Launchpad](https://launchpad.net/mtop-monitor). That page is the project listing, not an Ubuntu PPA; install the published `.deb` from GitHub Releases until a PPA is available.
 

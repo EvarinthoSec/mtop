@@ -52,6 +52,101 @@ jobs:
           path: dist/*.deb
           if-no-files-found: error
 
+  build-rpm:
+    name: Build RPM package (x86_64)
+    needs: version-check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binary
+        run: cargo build --locked --release --package mtop
+      - name: Build RPM
+        run: |
+          set -euo pipefail
+          cargo install cargo-generate-rpm --version 0.21.0 --locked
+          version="${GITHUB_REF_NAME#v}"
+          rpm_version="${version/-/~}"
+          mkdir -p dist
+          cargo generate-rpm --package crates/mtop \
+            --set-metadata "version = \"${rpm_version}\"" \
+            --auto-req disabled \
+            --output dist
+          sudo apt-get update
+          sudo apt-get install --yes rpm
+          rpm --query --package --info dist/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-rpm-x86_64
+          path: dist/*.rpm
+          if-no-files-found: error
+
+  build-arch:
+    name: Build Arch Linux package (x86_64)
+    needs: version-check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Render checksummed PKGBUILD and build package
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          source_url="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
+          curl --fail --location --retry 3 "$source_url" --output "$RUNNER_TEMP/mtop-source.tar.gz"
+          source_sha=$(sha256sum "$RUNNER_TEMP/mtop-source.tar.gz" | cut -d ' ' -f 1)
+          mkdir -p dist/arch
+          python3 packaging/arch/render_pkgbuild.py \
+            --version "$version" \
+            --source-sha256 "$source_sha" \
+            --output dist/arch/PKGBUILD
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace/dist/arch \
+            archlinux:base-devel bash -euc '
+              pacman -Syu --noconfirm --needed archlinux-keyring rust cargo git
+              useradd --create-home builder
+              chown -R builder:builder /workspace/dist/arch
+              su builder -s /bin/bash -c "cd /workspace/dist/arch && makepkg --cleanbuild --noconfirm"
+              pacman -Qip /workspace/dist/arch/mtop-*.pkg.tar.zst
+              pacman -U --noconfirm /workspace/dist/arch/*.pkg.tar.zst
+              /usr/bin/mtop --version
+            '
+          cp dist/arch/*.pkg.tar.zst dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-arch-x86_64
+          path: dist/*.pkg.tar.zst
+          if-no-files-found: error
+
+  build-alpine:
+    name: Build Alpine APK package (x86_64)
+    needs: version-check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build APK in Alpine Linux
+        run: |
+          set -euo pipefail
+          mkdir -p dist/alpine
+          docker run --rm --platform linux/amd64 \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -v "$GITHUB_WORKSPACE/dist/alpine:/output" \
+            -w /workspace alpine:latest sh \
+            packaging/alpine/build-apk.sh "${GITHUB_REF_NAME#v}" /workspace /output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-alpine-x86_64
+          path: |
+            dist/alpine/*.apk
+            dist/alpine/*.rsa.pub
+          if-no-files-found: error
+
   build-macos:
     name: Build macOS (${{ matrix.target }})
     needs: version-check
@@ -88,7 +183,7 @@ jobs:
 
   publish:
     name: Publish release assets
-    needs: [version-check, build-deb, build-macos]
+    needs: [version-check, build-deb, build-rpm, build-arch, build-alpine, build-macos]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -113,7 +208,7 @@ jobs:
             --x86-64-sha256 "$x86_64_sha" \
             --output dist/mtop.rb
           ruby -c dist/mtop.rb
-          (cd dist && sha256sum mtop_*.deb mtop-*.tar.gz mtop.rb > SHA256SUMS)
+          (cd dist && sha256sum mtop_*.deb *.rpm *.pkg.tar.zst *.apk *.rsa.pub mtop-*.tar.gz mtop.rb > SHA256SUMS)
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
