@@ -7,6 +7,7 @@ mtop \- terminal system monitor
 .RB [ --theme\~name ]
 .RB [ --config\~path ]
 .RB [ --once ]
+.RB [ --ratty-3d ]
 .SH DESCRIPTION
 .B mtop
 is a terminal user interface for viewing CPU, memory, swap, disk, network,
@@ -38,6 +39,11 @@ implementation does not search a default path when this option is omitted.
 .B --once
 Collect one snapshot, print a concise text report containing CPU, memory, and
 process counts, and exit without entering the interactive terminal UI.
+.TP
+.B --ratty-3d
+Emit Ratty Graphics Protocol panel frames for the Ratty terminal emulator.
+This option is opt-in and has no effect in terminals that do not support Ratty's
+graphics protocol.
 .SH KEYBOARD SHORTCUTS
 .TP
 .B q, Esc

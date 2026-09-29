@@ -1,6 +1,6 @@
 # Third-party notices
 
-The `src/ui.rs` implementation is mtop code visually inspired by btop++ and
+The `crates/tui/src/ui.rs` implementation is mtop code visually inspired by btop++ and
 includes selected adaptations from its rendering implementation.
 
 - Upstream: aristocratos/btop

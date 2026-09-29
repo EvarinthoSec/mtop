@@ -1,0 +1,26 @@
+class Mtop < Formula
+  desc "Cross-platform terminal system monitor"
+  homepage "https://github.com/EvarinthoSec/mtop"
+  version "@VERSION@"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/EvarinthoSec/mtop/releases/download/v#{version}/mtop-aarch64-apple-darwin.tar.gz"
+      sha256 "@ARM64_SHA256@"
+    end
+
+    on_intel do
+      url "https://github.com/EvarinthoSec/mtop/releases/download/v#{version}/mtop-x86_64-apple-darwin.tar.gz"
+      sha256 "@X86_64_SHA256@"
+    end
+  end
+
+  def install
+    bin.install "mtop"
+  end
+
+  test do
+    assert_match "A fast terminal system monitor", shell_output("#{bin}/mtop --help")
+  end
+end
