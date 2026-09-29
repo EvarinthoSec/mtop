@@ -42,6 +42,16 @@ cp -a "$SCRIPT_DIR/debian" "$SOURCE_DIR/debian"
 mkdir -p "$SOURCE_DIR/.cargo" "$SOURCE_DIR/packaging/ppa"
 cp "$SCRIPT_DIR/install-vendor-licenses.py" "$SOURCE_DIR/packaging/ppa/install-vendor-licenses.py"
 (cd "$SOURCE_DIR" && cargo vendor --locked vendor > .cargo/config.toml)
+# dpkg-source drops some upstream files (for example *.orig) from vendored
+# crates, which breaks Cargo's per-file checksums. Keep only the package
+# checksum, as Debian's Rust packaging does; Cargo.lock still pins each crate.
+python3 - "$SOURCE_DIR/vendor" <<'PY'
+import json, pathlib, sys
+for path in pathlib.Path(sys.argv[1]).glob("*/.cargo-checksum.json"):
+    data = json.loads(path.read_text())
+    data["files"] = {}
+    path.write_text(json.dumps(data))
+PY
 tar -cJf "$WORKDIR/mtop_${VERSION}.orig.tar.xz" \
   --exclude="mtop-$VERSION/debian" -C "$WORKDIR" "mtop-$VERSION"
 
