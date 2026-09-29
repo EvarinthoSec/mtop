@@ -57,8 +57,8 @@ fn windows_capabilities_match_contract() {
     assert!(capabilities.disk_io_counters);
     assert!(capabilities.network_counters);
     assert!(!capabilities.load_average);
-    assert!(!capabilities.gpu_platform_support);
-    assert!(!capabilities.gpu_backend_compiled);
+    assert!(capabilities.gpu_platform_support);
+    assert!(capabilities.gpu_backend_compiled);
 }
 
 #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))]

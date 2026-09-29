@@ -9,6 +9,7 @@ use crate::model::{
     NetworkSnapshot, PowerSnapshot, ProcessSnapshot, SystemSnapshot,
 };
 use crate::npu::{NpuProvider, npu_provider_for};
+use crate::windows_telemetry::PlatformSensors;
 #[cfg(any(target_os = "macos", all(feature = "gpu-nvidia", target_os = "linux")))]
 use anyhow::anyhow;
 use mtop_core::SnapshotProvider;
@@ -38,7 +39,7 @@ fn power_telemetry_note() -> String {
     if cfg!(target_os = "macos") {
         "macOS powermetrics requires elevated privileges; mtop does not elevate automatically."
     } else if cfg!(target_os = "windows") {
-        "Component power readings are not exposed by the configured Windows telemetry provider."
+        "No Windows Energy Meter (RAPL) counters found; unavailable readings remain N/A."
     } else {
         "No supported component-power source is active; unavailable readings remain N/A."
     }
@@ -79,8 +80,8 @@ fn capabilities_for_target() -> OsCapabilities {
         disk_io_counters: true,
         network_counters: true,
         load_average: false,
-        gpu_platform_support: false,
-        gpu_backend_compiled: false,
+        gpu_platform_support: true,
+        gpu_backend_compiled: true,
     }
 }
 
@@ -585,6 +586,11 @@ pub fn gpu_provider_for(config: &Config) -> Box<dyn GpuProvider> {
         return Box::new(AppleGpuProvider::new(total));
     }
 
+    #[cfg(windows)]
+    {
+        return Box::new(crate::WindowsGpuProvider::new());
+    }
+
     #[allow(unreachable_code)]
     Box::new(NoopGpuProvider)
 }
@@ -607,6 +613,8 @@ pub struct SysinfoCollector {
     cpu_sample_ready: bool,
     gpu_provider: Box<dyn GpuProvider>,
     npu_provider: Box<dyn NpuProvider>,
+    /// Extra power/thermal sources `sysinfo` lacks (Windows RAPL, ACPI zones).
+    platform_sensors: PlatformSensors,
     users: Users,
     samples_since_user_refresh: u32,
 }
@@ -639,6 +647,7 @@ impl SysinfoCollector {
             cpu_sample_ready: false,
             gpu_provider,
             npu_provider: npu_provider_for(),
+            platform_sensors: PlatformSensors::new(),
             users: Users::new_with_refreshed_list(),
             samples_since_user_refresh: 0,
         }
@@ -709,7 +718,21 @@ impl SnapshotProvider for SysinfoCollector {
             .iter()
             .map(|c| (c.label().to_owned(), c.temperature()))
             .collect();
-        let cpu_temps = select_cpu_temps(&sensors);
+        let platform_readings = self.platform_sensors.sample();
+        // sysinfo has no CPU sensors on Windows; fall back to PawnIO /
+        // HWiNFO, then live ACPI thermal zones.
+        let cpu_temps = match select_cpu_temps(&sensors) {
+            (None, cores) if cores.is_empty() => platform_readings.cpu_temperatures(),
+            temps => temps,
+        };
+        let power = if platform_readings.has_power() {
+            platform_readings.power.clone()
+        } else {
+            PowerSnapshot {
+                note: Some(power_telemetry_note()),
+                ..PowerSnapshot::default()
+            }
+        };
 
         SystemSnapshot {
             captured_at: SystemTime::now(),
@@ -748,10 +771,7 @@ impl SnapshotProvider for SysinfoCollector {
             processes,
             gpus,
             npus,
-            power: PowerSnapshot {
-                note: Some(power_telemetry_note()),
-                ..PowerSnapshot::default()
-            },
+            power,
             battery: self.collect_battery(),
             warnings,
         }

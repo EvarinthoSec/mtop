@@ -24,4 +24,13 @@ libc.workspace = true
 nvml-wrapper = { version = "0.13", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_Threading"] }
+windows-sys = { workspace = true, features = [
+    "Wdk_Graphics_Direct3D",
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Performance",
+    "Win32_System_Power",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
