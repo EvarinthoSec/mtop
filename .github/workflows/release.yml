@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag matching the current Cargo version
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
 
 permissions:
   contents: read
@@ -20,7 +29,12 @@ jobs:
       - name: Match tag to mtop package version
         run: |
           set -euo pipefail
-          tag_version="${GITHUB_REF_NAME#v}"
+          python3 -m unittest discover -s packaging/winget -p 'test_*.py'
+          if [[ "$RELEASE_TAG" != v* ]]; then
+            echo "release tag must start with v: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          tag_version="${RELEASE_TAG#v}"
           package_version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "mtop"))')
           if [ "$tag_version" != "$package_version" ]; then
             printf 'tag version %s does not match Cargo package version %s\n' "$tag_version" "$package_version" >&2
@@ -41,7 +55,7 @@ jobs:
       - name: Smoke-test binary
         run: target/release/mtop --once
       - name: Package .deb
-        run: sh packaging/build-deb.sh "${GITHUB_REF_NAME#v}" amd64
+        run: sh packaging/build-deb.sh "${RELEASE_TAG#v}" amd64
       - name: Validate Debian package contents
         run: |
           dpkg-deb --info dist/*.deb
@@ -67,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo install cargo-generate-rpm --version 0.21.0 --locked
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           rpm_version=$(python3 -c 'import sys; print(sys.argv[1].replace("-", "~", 1))' "$version")
           asset_version="${version//-/.}"
           mkdir -p dist
@@ -95,8 +109,8 @@ jobs:
       - name: Render checksummed PKGBUILD and build package
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          source_url="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
+          version="${RELEASE_TAG#v}"
+          source_url="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${RELEASE_TAG}.tar.gz"
           curl --fail --location --retry 3 "$source_url" --output "$RUNNER_TEMP/mtop-source.tar.gz"
           source_sha=$(sha256sum "$RUNNER_TEMP/mtop-source.tar.gz" | cut -d ' ' -f 1)
           mkdir -p dist/arch
@@ -139,7 +153,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/workspace" \
             -v "$GITHUB_WORKSPACE/dist/alpine:/output" \
             -w /workspace alpine:latest sh \
-            packaging/alpine/build-apk.sh "${GITHUB_REF_NAME#v}" /workspace /output
+            packaging/alpine/build-apk.sh "${RELEASE_TAG#v}" /workspace /output
       - uses: actions/upload-artifact@v4
         with:
           name: release-linux-alpine-x86_64
@@ -174,17 +188,50 @@ jobs:
           set -euo pipefail
           mkdir -p dist/stage
           install -m 0755 "target/${{ matrix.target }}/release/mtop" dist/stage/mtop
-          tar -C dist/stage -czf "dist/mtop-${{ matrix.target }}.tar.gz" mtop
+          version="${RELEASE_TAG#v}"
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) platform=arm64 ;;
+            x86_64-apple-darwin) platform=x86_64 ;;
+          esac
+          tar -C dist/stage -czf "dist/mtop-macos-${platform}-${version}.tar.gz" mtop
           rm -rf dist/stage
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
-          path: dist/mtop-${{ matrix.target }}.tar.gz
+          path: dist/mtop-macos-*.tar.gz
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows (x86_64)
+    needs: version-check
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build and smoke-test Windows binary
+        shell: pwsh
+        run: |
+          cargo build --locked --release --package mtop
+          .\target\release\mtop.exe --version
+          .\target\release\mtop.exe --help
+          .\target\release\mtop.exe --once
+      - name: Package Windows portable archive
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path target\release\mtop.exe -DestinationPath "dist\mtop-windows-x86_64-$version.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x86_64
+          path: dist/mtop-windows-x86_64-*.zip
           if-no-files-found: error
 
   publish:
     name: Publish release assets
-    needs: [version-check, build-deb, build-rpm, build-arch, build-alpine, build-macos]
+    needs: [version-check, build-deb, build-rpm, build-arch, build-alpine, build-macos, build-windows]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -197,32 +244,142 @@ jobs:
           pattern: release-*
           path: dist
           merge-multiple: true
-      - name: Generate Homebrew formula and checksums
+      - name: Normalize release asset filenames
+        shell: bash
+        run: bash packaging/normalize-release-assets.sh "${RELEASE_TAG#v}" dist
+      - name: Generate Homebrew formula, WinGet manifests, and checksums
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          arm64_sha=$(sha256sum dist/mtop-aarch64-apple-darwin.tar.gz | cut -d ' ' -f 1)
-          x86_64_sha=$(sha256sum dist/mtop-x86_64-apple-darwin.tar.gz | cut -d ' ' -f 1)
+          version="${RELEASE_TAG#v}"
+          arm64_sha=$(sha256sum "dist/mtop-macos-arm64-${version}.tar.gz" | cut -d ' ' -f 1)
+          x86_64_sha=$(sha256sum "dist/mtop-macos-x86_64-${version}.tar.gz" | cut -d ' ' -f 1)
           python3 packaging/homebrew/render_formula.py \
             --version "$version" \
             --arm64-sha256 "$arm64_sha" \
             --x86-64-sha256 "$x86_64_sha" \
             --output dist/mtop.rb
           ruby -c dist/mtop.rb
-          (cd dist && sha256sum -- mtop_*.deb *.rpm *.pkg.tar.zst *.apk *.rsa.pub mtop-*.tar.gz mtop.rb > SHA256SUMS)
+          windows_sha=$(sha256sum "dist/mtop-windows-x86_64-${version}.zip" | cut -d ' ' -f 1)
+          python3 packaging/winget/generate_manifests.py \
+            --version "$version" \
+            --installer-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/mtop-windows-x86_64-${version}.zip" \
+            --installer-sha256 "$windows_sha" \
+            --output dist/winget-manifests
+          (cd dist && sha256sum -- mtop-linux-* mtop-alpine-signing-key-*.rsa.pub mtop-macos-* mtop-windows-* mtop.rb > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-homebrew-formula
+          path: dist/mtop.rb
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-winget-manifests
+          path: dist/winget-manifests/
+          if-no-files-found: error
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="$GITHUB_REF_NAME"
+          tag="$RELEASE_TAG"
           prerelease_args=()
-          if [[ "$tag" == *-* ]]; then
+          if [[ "${tag,,}" =~ (alpha|beta|snapshot) ]]; then
             prerelease_args+=(--prerelease)
+          else
+            prerelease_args+=(--prerelease=false)
           fi
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/* --clobber
+            files=(dist/mtop-* dist/mtop.rb dist/SHA256SUMS)
+            gh release upload "$tag" "${files[@]}" --clobber
+            expected=$(printf '%s\n' "${files[@]##*/}" | sort)
+            actual=$(gh release view "$tag" --json assets --jq '.assets[].name' | sort)
+            missing=$(comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$actual"))
+            if [[ -n "$missing" ]]; then
+              printf 'release is missing uploaded assets:\n%s\n' "$missing" >&2
+              exit 1
+            fi
+            while IFS= read -r asset; do
+              if ! grep -Fxq "$asset" <<<"$expected"; then
+                gh release delete-asset "$tag" "$asset" --yes
+              fi
+            done < <(gh release view "$tag" --json assets --jq '.assets[].name')
             gh release edit "$tag" "${prerelease_args[@]}"
           else
-            gh release create "$tag" dist/* --title "$tag" --generate-notes "${prerelease_args[@]}"
+            gh release create "$tag" dist/mtop-* dist/mtop.rb dist/SHA256SUMS --verify-tag --title "$tag" --generate-notes "${prerelease_args[@]}"
           fi
+
+  publish-homebrew-tap:
+    name: Publish Homebrew tap formula
+    needs: publish
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-homebrew-formula
+          path: dist
+      - name: Update tap formula
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo 'HOMEBREW_TAP_TOKEN is not configured; skipping the cross-repository tap update.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          content=$(base64 < dist/mtop.rb | tr -d '\n')
+          existing=$(gh api repos/EvarinthoSec/homebrew-mtop/contents/Formula/mtop.rb 2>/dev/null || true)
+          if [[ -n "$existing" ]]; then
+            current_sha=$(jq -r .sha <<<"$existing")
+            current_content=$(jq -r .content <<<"$existing" | base64 --decode)
+            if [[ "$current_content" == "$(<dist/mtop.rb)" ]]; then
+              echo 'Homebrew tap formula is already current.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            gh api --method PUT repos/EvarinthoSec/homebrew-mtop/contents/Formula/mtop.rb \
+              --field message="chore: publish mtop ${RELEASE_TAG}" \
+              --field content="$content" --field sha="$current_sha"
+          else
+            gh api --method PUT repos/EvarinthoSec/homebrew-mtop/contents/Formula/mtop.rb \
+              --field message="chore: publish mtop ${RELEASE_TAG}" \
+              --field content="$content"
+          fi
+
+  publish-winget:
+    name: Submit WinGet manifest
+    needs: publish
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-winget-manifests
+          path: winget-manifests
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 6.0.x
+      - name: Submit manifest to the WinGet community repository
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_CREATE_GITHUB_TOKEN)) {
+            "WINGET_TOKEN is not configured; skipping the WinGet submission." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+            exit 0
+          }
+          $version = $env:RELEASE_TAG.Substring(1)
+          $manifestPath = "manifests/e/EvarinthoSec/mtop"
+          $manifestUrl = "https://api.github.com/repos/microsoft/winget-pkgs/contents/$manifestPath?ref=master"
+          $alreadyPublished = $false
+          try {
+            Invoke-RestMethod -Uri $manifestUrl -Headers @{ Accept = 'application/vnd.github+json' } | Out-Null
+            $alreadyPublished = $true
+          } catch {
+            if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
+          }
+          if (-not $alreadyPublished) {
+            "Initial WinGet submission is ready in the release-winget-manifests workflow artifact; submit this first version once, then later releases auto-submit updates." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+            exit 0
+          }
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe update EvarinthoSec.mtop -u "https://github.com/EvarinthoSec/mtop/releases/download/$($env:RELEASE_TAG)/mtop-windows-x86_64-$version.zip" -v $version --submit --no-open
