@@ -99,14 +99,13 @@ The project is also listed on [Launchpad](https://launchpad.net/mtop-monitor). T
 
 ### Homebrew
 
-The Homebrew formula now lives in this repository at `Formula/mtop.rb`; release automation refreshes it using the repository's built-in `GITHUB_TOKEN`. No separate tap repository or extra Homebrew token is needed. Add the project repository as a custom tap, then install:
+The Homebrew formula lives in the dedicated [`EvarinthoSec/homebrew-repo`](https://github.com/EvarinthoSec/homebrew-repo) tap under `Formula/mtop.rb`:
 
 ```sh
-brew tap EvarinthoSec/mtop https://github.com/EvarinthoSec/mtop.git
-brew install EvarinthoSec/mtop/mtop
+brew install EvarinthoSec/repo/mtop
 ```
 
-If you previously used the separate `EvarinthoSec/homebrew-mtop` tap, remove that tap first with `brew untap EvarinthoSec/mtop`. The release also attaches a versioned formula for direct installation. GitHub Releases containing `alpha`, `beta`, or `snapshot` in the tag are marked as prereleases.
+The release workflow synchronizes the formula into the tap when `HOMEBREW_REPO_TOKEN` is configured; it also attaches a versioned formula to GitHub Releases for direct installation. GitHub Releases containing `alpha`, `beta`, or `snapshot` in the tag are marked as prereleases.
 
 ### Windows / WinGet
 

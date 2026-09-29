@@ -268,6 +268,11 @@ jobs:
           (cd dist && sha256sum -- mtop-linux-* mtop-alpine-signing-key-*.rsa.pub mtop-macos-* mtop-windows-* mtop.rb > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
+          name: release-homebrew-formula
+          path: dist/mtop.rb
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
           name: release-winget-manifests
           path: dist/winget-manifests/
           if-no-files-found: error
@@ -312,12 +317,28 @@ jobs:
           else
             gh release create "$tag" dist/mtop-* dist/mtop.rb dist/SHA256SUMS --verify-tag --title "$tag" --generate-notes "${prerelease_args[@]}"
           fi
-      - name: Sync Homebrew formula into this repository
+
+  publish-homebrew-repo:
+    name: Publish Homebrew formula repository
+    needs: publish
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-homebrew-formula
+          path: dist
+      - name: Sync formula into Homebrew repository
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_REPO_TOKEN }}
         run: |
           set -euo pipefail
-          formula_path="repos/${GITHUB_REPOSITORY}/contents/Formula/mtop.rb"
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo 'HOMEBREW_REPO_TOKEN is not configured; formula is available on the GitHub Release but the tap repository was not updated.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          formula_path="repos/EvarinthoSec/homebrew-repo/contents/Formula/mtop.rb"
           content=$(base64 < dist/mtop.rb | tr -d '\n')
           existing=$(gh api "${formula_path}?ref=main" 2>/dev/null || true)
           if [[ -n "$existing" ]]; then
@@ -325,20 +346,20 @@ jobs:
             current_content=$(jq -r .content <<<"$existing" | base64 --decode)
             if [[ "$current_content" != "$(<dist/mtop.rb)" ]]; then
               gh api --method PUT "$formula_path" \
-                --field message="chore: update Homebrew formula for ${RELEASE_TAG}" \
+                --field message="chore: update mtop formula for ${RELEASE_TAG}" \
                 --field content="$content" --field sha="$current_sha" --field branch=main
             fi
           else
             gh api --method PUT "$formula_path" \
-              --field message="chore: add Homebrew formula for ${RELEASE_TAG}" \
+              --field message="chore: add mtop formula for ${RELEASE_TAG}" \
               --field content="$content" --field branch=main
           fi
           published=$(gh api "${formula_path}?ref=main" --jq .content | base64 --decode)
           if [[ "$published" != "$(<dist/mtop.rb)" ]]; then
-            echo 'Homebrew formula in main does not match the release formula.' >&2
+            echo 'Homebrew repository formula does not match the release formula.' >&2
             exit 1
           fi
-          echo 'Verified Formula/mtop.rb in main.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Verified Formula/mtop.rb in EvarinthoSec/homebrew-repo.' >> "$GITHUB_STEP_SUMMARY"
 
   publish-winget:
     name: Submit WinGet manifest
