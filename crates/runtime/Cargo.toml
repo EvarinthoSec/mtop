@@ -1,0 +1,13 @@
+[package]
+name = "mtop-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Collector worker lifecycle and runtime controls for mtop."
+
+[dependencies]
+mtop-config = { path = "../config" }
+mtop-core = { path = "../core" }
+tokio.workspace = true

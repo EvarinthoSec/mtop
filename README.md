@@ -1,6 +1,6 @@
 # mtop
 
-`mtop` is a terminal system monitor for Linux, macOS, and BSD-family systems. Its visual direction is inspired by `btop`, but `mtop` is an independent project—not a clone.
+`mtop` targets Linux, macOS, Windows, and BSD-family systems, with metrics and controls varying by platform. Its visual direction is inspired by `btop`, but `mtop` is an independent project—not a clone.
 
 The monitor provides a readable dashboard for CPU, memory, swap, disks, networks, processes, uptime, and best-effort GPU information. Metric availability depends on the operating system, permissions, hardware, and drivers.
 
@@ -26,6 +26,23 @@ The interactive command-line options are documented by:
 ```sh
 cargo run -- --help
 ```
+
+## Workspace layout
+
+The Cargo workspace keeps Rust packages under `crates/`:
+
+- `crates/mtop` — CLI, composition root, and compatibility facade.
+- `crates/core` — shared snapshots, ports, and formatting primitives.
+- `crates/config` — config types and TOML persistence.
+- `crates/platform` — system collectors and process-control adapters.
+- `crates/runtime` — collector worker lifecycle and control channel.
+- `crates/tui` — Ratatui rendering, themes, menus, and terminal input.
+
+The dependency direction stays inward: platform adapters implement core
+ports, runtime manages collection without knowing the platform adapter, and
+the TUI consumes runtime controls without depending on `mtop-platform`.
+
+Run the complete test suite with `cargo test --workspace`.
 
 ## Install
 
@@ -58,6 +75,47 @@ That example installs into:
 - `stage/usr/local/share/applications/mtop.desktop`
 
 The helper fails clearly when `target/release/mtop` is missing and touches only the packaged binary, man page, and desktop entry. It does not create or overwrite user configuration or secret files.
+
+### Linux package managers
+
+Pushing a version tag matching the workspace version builds amd64 packages for the main Linux distribution families. The release attaches package checksums in `SHA256SUMS`.
+
+| Package manager family | Release package | Install |
+| --- | --- | --- |
+| Debian / Ubuntu (`apt`) | `mtop_<version>_amd64.deb` | `sudo apt install ./mtop_<version>_amd64.deb` |
+| Fedora / RHEL / openSUSE (`dnf`, `yum`, `zypper`) | `mtop-<version>-1.x86_64.rpm` | `sudo dnf install ./mtop-<version>-1.x86_64.rpm` (or `sudo rpm -i ...`) |
+| Arch Linux (`pacman`) | `mtop-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U ./mtop-<version>-1-x86_64.pkg.tar.zst` |
+| Alpine (`apk`) | `mtop-<version>-r0.apk` and `mtop-doc-<version>-r0.apk` | `sudo install -m 0644 ./*.rsa.pub /etc/apk/keys/` then `sudo apk add ./mtop-<version>-r0.apk ./mtop-doc-<version>-r0.apk` |
+
+The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
+
+For other Linux distributions, install from a checkout with Rust 1.85 or newer:
+
+```sh
+cargo install --path crates/mtop --locked
+```
+
+The project is also listed on [Launchpad](https://launchpad.net/mtop-monitor). That page is the project listing, not an Ubuntu PPA; install the published `.deb` from GitHub Releases until a PPA is available.
+
+### Homebrew
+
+The release workflow attaches a versioned Homebrew formula. Install the latest published formula directly:
+
+```sh
+brew install --formula https://github.com/EvarinthoSec/mtop/releases/latest/download/mtop.rb
+```
+
+This URL-based install does not require a separate Homebrew tap.
+
+### Ratty 3D panels
+
+Run mtop inside a [Ratty](https://github.com/orhun/ratty) terminal with the opt-in flag to render 3D bezels around the dashboard panels:
+
+```sh
+mtop --ratty-3d
+```
+
+Ratty's Graphics Protocol is terminal-specific; omit the flag in ordinary terminals. In Ratty, `Ctrl+Alt+Enter` switches the terminal surface into 3D mode. The dashboard's default rendering does not emit Ratty protocol sequences.
 
 ## Documentation and configuration
 
@@ -122,7 +180,7 @@ default layout, where `k` kills and `h` opens help.
 | `C` (tree view) | Collapse / expand every child of the selected process |
 | `N` | Set a new nice value for the selected process (`-20`..`19`; lowering needs root) |
 | `p` / `P` | Cycle view presets forwards / backwards (btop `presets` config) |
-| `Ctrl+Z` | Suspend to the shell; `fg` brings mtop back |
+| `Ctrl+Z` | Suspend to the shell on Unix; unavailable on Windows |
 | Mouse wheel / click | Scroll / select in the process list |
 | Click a column header | Sort by it; click again to reverse |
 | Click `per-core□` / `reverse□` / `tree□` | Toggle that option from the proc title |
@@ -195,7 +253,7 @@ The dashboard may show:
 - Disk usage and available I/O rates
 - Network receive/transmit rates
 - Process activity and resource usage
-- System uptime, wall clock and battery (macOS `pmset`, Linux sysfs)
+- System uptime and wall clock; battery (macOS `pmset`, Linux sysfs, Windows `GetSystemPowerStatus`)
 - GPU utilization and memory when an optional supported provider is available
 
 GPU information is optional. Unavailable GPU data is normal and does not indicate that `mtop` is malfunctioning. On macOS, utilization and GPU memory in use come from `ioreg` (IOAccelerator) with no extra dependencies or root; Apple does not expose GPU temperature there. The optional `gpu-nvidia` feature compiles the NVIDIA backend on supported Linux builds; it still requires compatible hardware, drivers, and NVML. When a GPU is present its box sits beside the CPU box; toggle it with `5`.
@@ -205,6 +263,7 @@ GPU information is optional. Unavailable GPU data is normal and does not indicat
 These status labels describe verification in this repository, not a promise that every metric exists on every host:
 
 - **macOS:** native-tested in the current development environment.
+- **Windows:** cross-compilation verified for `x86_64-pc-windows-gnu` and `x86_64-pc-windows-msvc`; native runtime testing is still required. CPU, memory, process, disk, network, and system battery status are supported; load average and GPU metrics are unavailable. `TERM`/`KILL` use hard process termination, other POSIX signals are unavailable, and process priority changes map approximately to Windows priority classes.
 - **Linux:** compile-only or otherwise unverified in the current development environment; runtime support is not claimed from compilation alone.
 - **FreeBSD, OpenBSD, and NetBSD:** compile-only/untested unless a separate run is recorded; runtime support is not claimed from compilation alone.
 - **Other targets:** not a supported release target; compilation may work when the Rust dependencies support it.
@@ -217,6 +276,6 @@ mtop is licensed under the MIT License; see [LICENSE](LICENSE).
 
 The UI takes visual inspiration from btop++ and adapts selected rendering
 details. Its upstream copyright and Apache-2.0 attribution are retained in
-`src/ui.rs`; the Apache-2.0 license copy is included at
+`crates/tui/src/ui.rs`; the Apache-2.0 license copy is included at
 [`THIRD_PARTY_LICENSES/btop-Apache-2.0.txt`](THIRD_PARTY_LICENSES/btop-Apache-2.0.txt)
 to satisfy the applicable redistribution notice requirements.

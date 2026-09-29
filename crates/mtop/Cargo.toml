@@ -1,0 +1,54 @@
+[package]
+name = "mtop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A cross-platform terminal system monitor for Linux, macOS, Windows, and BSD-family systems."
+readme = "../../README.md"
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/mtop", dest = "/usr/bin/mtop", mode = "755" },
+    { source = "packaging/mtop.1", dest = "/usr/share/man/man1/mtop.1", mode = "644" },
+    { source = "packaging/mtop.desktop", dest = "/usr/share/applications/mtop.desktop", mode = "644" },
+    { source = "LICENSE", dest = "/usr/share/licenses/mtop/LICENSE", mode = "644" },
+    { source = "THIRD_PARTY_NOTICES.md", dest = "/usr/share/doc/mtop/THIRD_PARTY_NOTICES.md", mode = "644" },
+    { source = "THIRD_PARTY_LICENSES/btop-Apache-2.0.txt", dest = "/usr/share/licenses/mtop/btop-Apache-2.0.txt", mode = "644" },
+]
+require-sh = false
+
+[package.metadata.generate-rpm.requires]
+glibc = ">= 2.35"
+
+[features]
+default = []
+gpu-nvidia = ["mtop-platform/gpu-nvidia"]
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+mtop-config = { path = "../config" }
+mtop-core = { path = "../core" }
+mtop-platform = { path = "../platform" }
+mtop-runtime = { path = "../runtime" }
+mtop-tui = { path = "../tui" }
+
+[dev-dependencies]
+anyhow.workspace = true
+clap.workspace = true
+crossterm.workspace = true
+libc.workspace = true
+ratatui.workspace = true
+regex.workspace = true
+serde.workspace = true
+sysinfo.workspace = true
+toml.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "mtop"
+path = "src/main.rs"

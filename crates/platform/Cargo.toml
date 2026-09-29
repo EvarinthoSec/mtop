@@ -1,0 +1,27 @@
+[package]
+name = "mtop-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "System metric and process-control adapters for mtop."
+
+[features]
+default = []
+gpu-nvidia = ["dep:nvml-wrapper"]
+
+[dependencies]
+anyhow.workspace = true
+mtop-config = { path = "../config" }
+mtop-core = { path = "../core" }
+sysinfo.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nvml-wrapper = { version = "0.13", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_Threading"] }
