@@ -78,7 +78,7 @@ The helper fails clearly when `target/release/mtop` is missing and touches only 
 
 ### Linux package managers
 
-Pushing a version tag matching the workspace version builds amd64 packages for the main Linux distribution families. The release attaches package checksums in `SHA256SUMS`.
+Pushing a version tag matching the workspace version builds packages for the main Linux distribution families, macOS archives for Intel and Apple Silicon, and a portable Windows x86_64 archive. The release attaches package checksums in `SHA256SUMS`.
 
 | Package manager family | Release package | Install |
 | --- | --- | --- |
@@ -99,13 +99,14 @@ The project is also listed on [Launchpad](https://launchpad.net/mtop-monitor). T
 
 ### Homebrew
 
-Install the current version from the official project tap:
+The Homebrew formula now lives in this repository at `Formula/mtop.rb`; release automation refreshes it using the repository's built-in `GITHUB_TOKEN`. No separate tap repository or extra Homebrew token is needed. Add the project repository as a custom tap, then install:
 
 ```sh
+brew tap EvarinthoSec/mtop https://github.com/EvarinthoSec/mtop.git
 brew install EvarinthoSec/mtop/mtop
 ```
 
-The release also attaches a versioned formula for direct installation. GitHub Releases containing `alpha`, `beta`, or `snapshot` in the tag are marked as prereleases.
+If you previously used the separate `EvarinthoSec/homebrew-mtop` tap, remove that tap first with `brew untap EvarinthoSec/mtop`. The release also attaches a versioned formula for direct installation. GitHub Releases containing `alpha`, `beta`, or `snapshot` in the tag are marked as prereleases.
 
 ### Windows / WinGet
 
@@ -115,7 +116,7 @@ After the initial community manifest is accepted, install with:
 winget install --id EvarinthoSec.mtop --exact
 ```
 
-The package is a portable Windows x86_64 build. WinGet community submissions are reviewed by the repository maintainers before becoming searchable.
+The release archive is named `mtop-windows-x86_64-<version>.zip`. The [initial WinGet manifest submission](https://github.com/microsoft/winget-pkgs/pull/443433) is awaiting community review; the package will become searchable after it is accepted.
 
 ### Ratty 3D panels
 
