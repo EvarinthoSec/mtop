@@ -298,11 +298,21 @@ jobs:
               printf 'release is missing uploaded assets:\n%s\n' "$missing" >&2
               exit 1
             fi
-            while IFS= read -r asset; do
-              if ! grep -Fxq "$asset" <<<"$expected"; then
-                gh release delete-asset "$tag" "$asset" --yes
-              fi
-            done < <(gh release view "$tag" --json assets --jq '.assets[].name')
+            release_id=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" --jq .id)
+            asset_records=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets" --jq '.[] | [.id, .name] | @tsv')
+            if [[ -n "$asset_records" ]]; then
+              while IFS=$'\t' read -r asset_id asset_name; do
+                if ! grep -Fqx -- "$asset_name" <<<"$expected"; then
+                  gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
+                fi
+              done <<<"$asset_records"
+            fi
+            actual=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets" --jq '.[].name' | sort)
+            stale=$(comm -13 <(printf '%s\n' "$expected") <(printf '%s\n' "$actual"))
+            if [[ -n "$stale" ]]; then
+              printf 'stale release assets remain:\n%s\n' "$stale" >&2
+              exit 1
+            fi
             gh release edit "$tag" "${prerelease_args[@]}"
           else
             gh release create "$tag" dist/mtop-* dist/mtop.rb dist/SHA256SUMS --verify-tag --title "$tag" --generate-notes "${prerelease_args[@]}"
