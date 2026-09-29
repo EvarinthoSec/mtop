@@ -62,14 +62,16 @@ mkdir -p "$OUTPUT_DIR"
   dpkg-buildpackage -S -sa -us -uc -d
 )
 shopt -s nullglob
-FILES=("$WORKDIR"/mtop_"$DEBIAN_VERSION".*)
+FILES=("$WORKDIR"/mtop_"$DEBIAN_VERSION"* "$WORKDIR/mtop_${VERSION}.orig.tar.xz")
 if [[ ${#FILES[@]} -lt 4 ]]; then
   printf 'error: expected .dsc, .changes, orig, and Debian source archives for %s\n' "$DEBIAN_VERSION" >&2
   printf 'found: %s\n' "${FILES[*]:-none}" >&2
   exit 1
 fi
 cp -- "${FILES[@]}" "$OUTPUT_DIR/"
-if [[ ! -f "$OUTPUT_DIR/mtop_${DEBIAN_VERSION}_source.changes" || ! -f "$OUTPUT_DIR/mtop_${DEBIAN_VERSION}.dsc" ]]; then
+if [[ ! -f "$OUTPUT_DIR/mtop_${DEBIAN_VERSION}_source.changes" \
+  || ! -f "$OUTPUT_DIR/mtop_${DEBIAN_VERSION}.dsc" \
+  || ! -f "$OUTPUT_DIR/mtop_${VERSION}.orig.tar.xz" ]]; then
   printf 'error: source package output is incomplete\n' >&2
   exit 1
 fi
