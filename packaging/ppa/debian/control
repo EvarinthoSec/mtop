@@ -2,7 +2,7 @@ Source: mtop
 Section: utils
 Priority: optional
 Maintainer: EvarinthoSec <evarin@anantix.network>
-Build-Depends: debhelper-compat (= 13), build-essential, cargo (>= 1.85), rustc (>= 1.85), python3
+Build-Depends: debhelper-compat (= 13), build-essential, cargo (>= 1.93), rustc (>= 1.93), python3
 Standards-Version: 4.7.0
 Homepage: https://github.com/EvarinthoSec/mtop
 Rules-Requires-Root: no

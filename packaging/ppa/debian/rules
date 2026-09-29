@@ -1,5 +1,10 @@
 #!/usr/bin/make -f
 export CARGO_NET_OFFLINE = true
+# Ubuntu resolute ships rustc/cargo 1.93; sysinfo 0.39 declares rust-version
+# 1.95 but compiles and passes the test suite on 1.93 (verified in the
+# Launchpad PPA workflow's resolute smoke-test job). Revisit when the archive
+# toolchain reaches 1.95.
+CARGO_FLAGS = --locked --offline --release --ignore-rust-version
 
 %:
 	dh $@ --buildsystem=makefile
@@ -11,10 +16,10 @@ override_dh_auto_configure:
 	:
 
 override_dh_auto_build:
-	cargo build --locked --offline --release --package mtop
+	cargo build $(CARGO_FLAGS) --package mtop
 
 override_dh_auto_test:
-	cargo test --locked --offline --package mtop
+	cargo test $(CARGO_FLAGS) --package mtop
 
 override_dh_auto_install:
 	install -D -m 0755 target/release/mtop debian/tmp/usr/bin/mtop
