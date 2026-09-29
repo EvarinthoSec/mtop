@@ -6,12 +6,12 @@ class Mtop < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/EvarinthoSec/mtop/releases/download/v#{version}/mtop-aarch64-apple-darwin.tar.gz"
+      url "https://github.com/EvarinthoSec/mtop/releases/download/v#{version}/mtop-macos-arm64-#{version}.tar.gz"
       sha256 "@ARM64_SHA256@"
     end
 
     on_intel do
-      url "https://github.com/EvarinthoSec/mtop/releases/download/v#{version}/mtop-x86_64-apple-darwin.tar.gz"
+      url "https://github.com/EvarinthoSec/mtop/releases/download/v#{version}/mtop-macos-x86_64-#{version}.tar.gz"
       sha256 "@X86_64_SHA256@"
     end
   end

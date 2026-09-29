@@ -82,12 +82,12 @@ Pushing a version tag matching the workspace version builds amd64 packages for t
 
 | Package manager family | Release package | Install |
 | --- | --- | --- |
-| Debian / Ubuntu (`apt`) | `mtop_<asset-version>_amd64.deb` | `sudo apt install ./mtop_<asset-version>_amd64.deb` |
-| Fedora / RHEL / openSUSE (`dnf`, `yum`, `zypper`) | `mtop-<asset-version>-1.x86_64.rpm` | `sudo dnf install ./mtop-<asset-version>-1.x86_64.rpm` (or `sudo rpm -i ...`) |
-| Arch Linux (`pacman`) | `mtop-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U ./mtop-<version>-1-x86_64.pkg.tar.zst` |
-| Alpine (`apk`) | `mtop-<version>-r0.apk` and `mtop-doc-<version>-r0.apk` | `sudo install -m 0644 ./*.rsa.pub /etc/apk/keys/` then `sudo apk add ./mtop-<version>-r0.apk ./mtop-doc-<version>-r0.apk` |
+| Debian / Ubuntu (`apt`) | `mtop-linux-amd64-<version>.deb` | `sudo apt install ./mtop-linux-amd64-<version>.deb` |
+| Fedora / RHEL / openSUSE (`dnf`, `yum`, `zypper`) | `mtop-linux-x86_64-<version>.rpm` | `sudo dnf install ./mtop-linux-x86_64-<version>.rpm` (or `sudo rpm -i ...`) |
+| Arch Linux (`pacman`) | `mtop-linux-x86_64-<version>.pkg.tar.zst` | `sudo pacman -U ./mtop-linux-x86_64-<version>.pkg.tar.zst` |
+| Alpine (`apk`) | `mtop-linux-x86_64-<version>.apk` and `mtop-linux-x86_64-<version>-docs.apk` | `sudo install -m 0644 ./mtop-alpine-signing-key-<version>.rsa.pub /etc/apk/keys/` then `sudo apk add ./mtop-linux-x86_64-<version>.apk ./mtop-linux-x86_64-<version>-docs.apk` |
 
-For release filenames, `<asset-version>` replaces prerelease hyphens with dots (for example, `0.1.0-alpha.1` becomes `0.1.0.alpha.1`); package metadata retains each ecosystem's native prerelease version. The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
+Release assets use descriptive platform/architecture names and the SemVer version (for example, `mtop-linux-amd64-0.1.0-alpha.1.deb`); package metadata retains each ecosystem's native prerelease version. The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
 
 For other Linux distributions, install from a checkout with Rust 1.85 or newer:
 
@@ -99,13 +99,23 @@ The project is also listed on [Launchpad](https://launchpad.net/mtop-monitor). T
 
 ### Homebrew
 
-The release workflow attaches a versioned Homebrew formula. Install a formula from a tagged release (this alpha release shown):
+Install the current version from the official project tap:
 
 ```sh
-brew install --formula https://github.com/EvarinthoSec/mtop/releases/download/v0.1.0-alpha.1/mtop.rb
+brew install EvarinthoSec/mtop/mtop
 ```
 
-This URL-based install does not require a separate Homebrew tap. The GitHub `latest` endpoint excludes prereleases; use the tagged URL for alpha, beta, or release-candidate builds.
+The release also attaches a versioned formula for direct installation. GitHub Releases containing `alpha`, `beta`, or `snapshot` in the tag are marked as prereleases.
+
+### Windows / WinGet
+
+After the initial community manifest is accepted, install with:
+
+```powershell
+winget install --id EvarinthoSec.mtop --exact
+```
+
+The package is a portable Windows x86_64 build. WinGet community submissions are reviewed by the repository maintainers before becoming searchable.
 
 ### Ratty 3D panels
 
