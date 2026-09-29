@@ -32,6 +32,10 @@ DEB_VERSION=${VERSION%%-*}
 if [ "$DEB_VERSION" != "$VERSION" ]; then
     DEB_VERSION="$DEB_VERSION~${VERSION#*-}"
 fi
+ASSET_VERSION=${VERSION%%-*}
+if [ "$ASSET_VERSION" != "$VERSION" ]; then
+    ASSET_VERSION="$ASSET_VERSION.${VERSION#*-}"
+fi
 
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/mtop-deb.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT HUP INT TERM
@@ -58,6 +62,6 @@ Description: Cross-platform terminal system monitor
 EOF
 
 mkdir -p "$OUTPUT_DIR"
-PACKAGE="$OUTPUT_DIR/mtop_${DEB_VERSION}_${ARCH}.deb"
+PACKAGE="$OUTPUT_DIR/mtop_${ASSET_VERSION}_${ARCH}.deb"
 dpkg-deb --build --root-owner-group "$STAGE" "$PACKAGE"
 printf 'built %s\n' "$PACKAGE"
