@@ -1,0 +1,177 @@
+name: Launchpad PPA
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing stable release tag, for example v1.0.0
+        required: true
+        type: string
+      ppa_revision:
+        description: Increment only when re-uploading the same upstream version
+        required: true
+        default: "1"
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/launchpad-ppa.yml
+      - packaging/ppa/**
+      - packaging/RELEASING.md
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.release_tag || 'HEAD' }}
+  PPA_REVISION: ${{ github.event.inputs.ppa_revision || '1' }}
+  UBUNTU_SERIES: resolute
+
+jobs:
+  build-source:
+    name: Build signed-source upload artifacts
+    if: github.event_name != 'release' || github.event.release.prerelease == false
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install source package builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends dpkg-dev debhelper
+      - name: Build source package with vendored Cargo dependencies
+        run: bash packaging/ppa/build-source-package.sh "$RELEASE_TAG" "$UBUNTU_SERIES" "$PPA_REVISION" "$RUNNER_TEMP/ppa-source"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launchpad-ppa-source
+          path: ${{ runner.temp }}/ppa-source/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Record PPA build target
+        run: |
+          printf 'Built an unsigned source upload for Ubuntu %s. It is not yet published to the PPA.\n' "$UBUNTU_SERIES" >> "$GITHUB_STEP_SUMMARY"
+
+  test-target-series:
+    name: Build and smoke-test on Ubuntu resolute
+    needs: build-source
+    runs-on: ubuntu-24.04
+    container: ubuntu:resolute
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: launchpad-ppa-source
+          path: ppa-source
+      - name: Build and install the source package
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends build-essential cargo rustc debhelper python3
+          dpkg-source -x ppa-source/*.dsc /tmp/mtop-source
+          useradd --create-home builder
+          chown -R builder:builder /tmp/mtop-source
+          runuser -u builder -- bash -c 'cd /tmp/mtop-source && dpkg-buildpackage -B -us -uc'
+          package=$(python3 -c 'from pathlib import Path; p=list(Path("/tmp").glob("mtop-bin_*_amd64.deb")); assert len(p)==1, p; print(p[0])')
+          dpkg -i "$package"
+          mtop --version
+          mtop --help
+          mtop --once
+
+  publish:
+    name: Sign and upload source package
+    needs: [build-source, test-target-series]
+    if: github.event_name != 'pull_request' && needs.test-target-series.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: launchpad-ppa-source
+          path: dist/ppa-source
+      - name: Sign and upload to Launchpad
+        env:
+          LAUNCHPAD_GPG_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_GPG_PRIVATE_KEY }}
+          LAUNCHPAD_GPG_PASSPHRASE: ${{ secrets.LAUNCHPAD_GPG_PASSPHRASE }}
+          LAUNCHPAD_SSH_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_SSH_PRIVATE_KEY }}
+          LAUNCHPAD_SSH_PASSPHRASE: ${{ secrets.LAUNCHPAD_SSH_PASSPHRASE }}
+          LAUNCHPAD_GPG_KEY_ID: ${{ vars.LAUNCHPAD_GPG_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$LAUNCHPAD_GPG_PRIVATE_KEY" || -z "$LAUNCHPAD_GPG_KEY_ID" || -z "$LAUNCHPAD_SSH_PRIVATE_KEY" ]]; then
+            echo 'Source package built and attached as an artifact, but not uploaded: register OpenPGP and SSH public keys with Launchpad, then configure the LAUNCHPAD_GPG_* and LAUNCHPAD_SSH_PRIVATE_KEY Actions secrets/variable.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends devscripts dput gnupg openssh-client
+          export GNUPGHOME="$RUNNER_TEMP/launchpad-gnupg"
+          install -d -m 0700 "$GNUPGHOME"
+          printf '%s' "$LAUNCHPAD_GPG_PRIVATE_KEY" | gpg --batch --homedir "$GNUPGHOME" --import
+          gpg --batch --homedir "$GNUPGHOME" --list-secret-keys "$LAUNCHPAD_GPG_KEY_ID" >/dev/null
+          python3 - "$LAUNCHPAD_GPG_KEY_ID" <<'PY'
+          import json, sys, urllib.request
+          fingerprint = ''.join(sys.argv[1].split()).upper()
+          # The 1.0 web-service API returns an empty gpg_keys collection; devel lists them.
+          url = 'https://api.launchpad.net/devel/~evarinthosec/gpg_keys'
+          with urllib.request.urlopen(url, timeout=20) as response:
+              keys = json.load(response).get('entries', [])
+          registered = {''.join(key.get('fingerprint', '').split()).upper() for key in keys}
+          if fingerprint not in registered:
+              raise SystemExit('Signing key fingerprint is not registered to the Launchpad account; add its public key before uploading.')
+          PY
+          if [[ -n "$LAUNCHPAD_GPG_PASSPHRASE" ]]; then
+            python3 -c 'import os,pathlib; p=pathlib.Path(os.environ["RUNNER_TEMP"])/"launchpad-passphrase"; p.write_text(os.environ["LAUNCHPAD_GPG_PASSPHRASE"]); p.chmod(0o600)'
+            export LAUNCHPAD_GPG_PASSPHRASE_FILE="$RUNNER_TEMP/launchpad-passphrase"
+          fi
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$LAUNCHPAD_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/launchpad-ssh-key"
+          chmod 0600 "$RUNNER_TEMP/launchpad-ssh-key"
+          eval "$(ssh-agent -s)"
+          if [[ -n "$LAUNCHPAD_SSH_PASSPHRASE" ]]; then
+            cat > "$RUNNER_TEMP/ssh-askpass" <<'EOF'
+          #!/bin/sh
+          printf '%s\n' "$LAUNCHPAD_SSH_PASSPHRASE"
+          EOF
+            chmod 0700 "$RUNNER_TEMP/ssh-askpass"
+            export SSH_ASKPASS="$RUNNER_TEMP/ssh-askpass"
+            export SSH_ASKPASS_REQUIRE=force
+            export DISPLAY=:0
+          fi
+          printf '\n' | ssh-add -t 1h "$RUNNER_TEMP/launchpad-ssh-key"
+          ssh-keyscan -T 10 -t rsa ppa.launchpad.net > "$HOME/.ssh/known_hosts"
+          if ! ssh-keygen -lf "$HOME/.ssh/known_hosts" -E sha256 | awk '{print $2}' | grep -Fxq 'SHA256:MGq+4hxD7RduVTcfwlwwboZnsgJC6SL/NltM8ye+gNg'; then
+            echo 'ppa.launchpad.net host key did not match the pinned Launchpad RSA fingerprint.' >&2
+            exit 1
+          fi
+          chmod 0600 "$HOME/.ssh/known_hosts"
+          cat > "$HOME/.ssh/config" <<EOF
+          Host ppa.launchpad.net
+            User evarinthosec
+            IdentityFile $RUNNER_TEMP/launchpad-ssh-key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $HOME/.ssh/known_hosts
+          EOF
+          chmod 0600 "$HOME/.ssh/config"
+          cat > "$HOME/.dput.cf" <<'EOF'
+          [mtop-ppa]
+          fqdn = ppa.launchpad.net
+          method = sftp
+          incoming = ~evarinthosec/ubuntu/ppa/
+          login = evarinthosec
+          allow_unsigned_uploads = 0
+          EOF
+          chmod 0755 packaging/ppa/gpg-sign-wrapper.sh
+          changes=(dist/ppa-source/*.changes)
+          if [[ ${#changes[@]} -ne 1 ]]; then
+            printf 'expected exactly one .changes file, found %s\n' "${#changes[@]}" >&2
+            exit 1
+          fi
+          debsign --no-conf -p "$GITHUB_WORKSPACE/packaging/ppa/gpg-sign-wrapper.sh" -k "$LAUNCHPAD_GPG_KEY_ID" "${changes[0]}"
+          dput mtop-ppa "${changes[0]}"
+          echo 'Signed source package submitted to Launchpad PPA; Launchpad build status must be checked separately.' >> "$GITHUB_STEP_SUMMARY"

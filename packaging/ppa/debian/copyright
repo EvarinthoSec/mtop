@@ -1,0 +1,25 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: mtop
+Source: https://github.com/EvarinthoSec/mtop
+
+Files: *
+Copyright: 2026 EvarinthoSec
+License: MIT
+ The complete MIT license is included in the upstream LICENSE file.
+ .
+ On Debian systems, the standard text is available in /usr/share/common-licenses/MIT.
+
+Files: crates/tui/src/ui.rs
+Copyright: 2021 Jakob P. Liljenberg
+License: Apache-2.0
+ The required Apache-2.0 notice is retained in THIRD_PARTY_NOTICES.md and the
+ full license is included in THIRD_PARTY_LICENSES/btop-Apache-2.0.txt.
+ .
+ On Debian systems, the standard text is available in /usr/share/common-licenses/Apache-2.0.
+
+Files: vendor/*
+Copyright: Various authors; see each vendored crate's Cargo.toml
+License: vendor-specific
+ Each vendored Rust crate retains its SPDX license declaration and original
+ license/notice files. Those files are included in the binary package under
+ /usr/share/doc/mtop/vendor-licenses.

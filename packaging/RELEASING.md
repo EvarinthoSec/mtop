@@ -27,3 +27,17 @@ The release workflow always creates a versioned WinGet manifest artifact. For th
 The AUR recipe is maintained in `packaging/aur/PKGBUILD` with its generated `.SRCINFO`. It repackages the prebuilt Arch release asset and intentionally conflicts with the unrelated AUR package named `mtop`, because both install `/usr/bin/mtop`.
 
 For each release, update `pkgver` and the Arch asset's SHA-256, regenerate `.SRCINFO` with `makepkg --printsrcinfo`, then build and smoke-test the package in an Arch environment. Submit both files to the `mtop-bin` AUR Git repository using an SSH key registered with AUR. The command `yay -S mtop-bin` becomes available after AUR accepts the submission.
+
+## Launchpad PPA (`ppa:evarinthosec/ppa`)
+
+The `Launchpad PPA` workflow creates a vendored Debian source package for Ubuntu resolute (26.04) and uploads it after the matching OpenPGP key is configured. Launchpad builds the binary package `mtop-bin` from source; the `.deb` attached to a GitHub Release is not uploaded directly. Launchpad builds offline with the archive toolchain (resolute ships Rust/Cargo 1.93), so the workspace `rust-version` and every locked dependency must stay at or below that; `sysinfo` is held at 0.38.x because 0.39 requires Rust 1.95. Tags cut before this pin (including `v1.0.0`) cannot be built by Launchpad. Ubuntu noble's archive Rust/Cargo 1.75 is too old. Continue using the direct release `.deb` on other supported Ubuntu versions.
+
+Before the first upload, register the uploader's public OpenPGP key and SSH public key with the Launchpad account, then configure these GitHub Actions values under Settings → Secrets and variables → Actions:
+
+- Secret `LAUNCHPAD_GPG_PRIVATE_KEY`: ASCII-armored private key corresponding to the registered public key.
+- Secret `LAUNCHPAD_GPG_PASSPHRASE`: key passphrase, if the OpenPGP key is protected.
+- Secret `LAUNCHPAD_SSH_PRIVATE_KEY`: private key corresponding to the registered SSH key.
+- Secret `LAUNCHPAD_SSH_PASSPHRASE`: key passphrase, if the SSH key is protected.
+- Variable `LAUNCHPAD_GPG_KEY_ID`: full fingerprint of that registered key.
+
+Trigger the workflow manually for an existing stable tag to publish the initial PPA version. Later stable GitHub Releases trigger it automatically. A successful `dput` only means the source upload was submitted; verify Launchpad's build and publication status before telling users to install with `apt`. After Launchpad publishes the build on Ubuntu 26.04, install with `sudo add-apt-repository ppa:evarinthosec/ppa`, `sudo apt update`, then `sudo apt install mtop-bin`.
