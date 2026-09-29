@@ -116,7 +116,8 @@ jobs:
           python3 - "$LAUNCHPAD_GPG_KEY_ID" <<'PY'
           import json, sys, urllib.request
           fingerprint = ''.join(sys.argv[1].split()).upper()
-          url = 'https://api.launchpad.net/1.0/~evarinthosec/gpg_keys'
+          # The 1.0 web-service API returns an empty gpg_keys collection; devel lists them.
+          url = 'https://api.launchpad.net/devel/~evarinthosec/gpg_keys'
           with urllib.request.urlopen(url, timeout=20) as response:
               keys = json.load(response).get('entries', [])
           registered = {''.join(key.get('fingerprint', '').split()).upper() for key in keys}
