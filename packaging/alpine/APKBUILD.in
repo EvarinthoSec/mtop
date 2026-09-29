@@ -3,7 +3,6 @@ pkgver=@PKGVER@
 pkgrel=0
 pkgdesc="Cross-platform terminal system monitor"
 url="https://launchpad.net/mtop-monitor"
-maintainer="EvarinthoSec"
 arch="x86_64"
 license="MIT"
 depends="musl"
