@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TAG=${1:?usage: build-source-package.sh vVERSION [SERIES] [PPA_REVISION] [OUTPUT_DIR]}
+TAG=${1:?usage: build-source-package.sh vVERSION|HEAD [SERIES] [PPA_REVISION] [OUTPUT_DIR]}
 SERIES=${2:-resolute}
 PPA_REVISION=${3:-1}
 OUTPUT_DIR=${4:-"$PWD/dist/ppa-source"}
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
 
-if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  printf 'error: PPA uploads require a stable vMAJOR.MINOR.PATCH tag: %s\n' "$TAG" >&2
+# HEAD builds the current checkout for CI verification only; uploads use a tag.
+if [[ "$TAG" != HEAD && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  printf 'error: PPA uploads require a stable vMAJOR.MINOR.PATCH tag (or HEAD for CI): %s\n' "$TAG" >&2
   exit 2
 fi
 if [[ "$SERIES" != resolute ]]; then
@@ -20,11 +21,15 @@ if [[ ! "$PPA_REVISION" =~ ^[1-9][0-9]*$ ]]; then
   printf 'error: PPA revision must be a positive integer: %s\n' "$PPA_REVISION" >&2
   exit 2
 fi
-if ! git -C "$REPO_ROOT" cat-file -e "refs/tags/$TAG^{commit}" 2>/dev/null; then
+if [[ "$TAG" != HEAD ]] && ! git -C "$REPO_ROOT" cat-file -e "refs/tags/$TAG^{commit}" 2>/dev/null; then
   git -C "$REPO_ROOT" fetch origin "refs/tags/$TAG:refs/tags/$TAG"
 fi
 
-VERSION=${TAG#v}
+if [[ "$TAG" == HEAD ]]; then
+  VERSION=$(git -C "$REPO_ROOT" show HEAD:Cargo.toml | sed -n 's/^version = "\(.*\)"$/\1/p' | head -n1)
+else
+  VERSION=${TAG#v}
+fi
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/mtop-ppa.XXXXXX")
 trap 'rm -rf "$WORKDIR"' EXIT HUP INT TERM
 SOURCE_DIR="$WORKDIR/mtop-$VERSION"

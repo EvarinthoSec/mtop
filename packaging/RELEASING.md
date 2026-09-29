@@ -30,7 +30,7 @@ For each release, update `pkgver` and the Arch asset's SHA-256, regenerate `.SRC
 
 ## Launchpad PPA (`ppa:evarinthosec/ppa`)
 
-The `Launchpad PPA` workflow creates a vendored Debian source package for Ubuntu resolute (26.04) and uploads it after the matching OpenPGP key is configured. Launchpad builds the binary package `mtop-bin` from source; the `.deb` attached to a GitHub Release is not uploaded directly. The recipe requires Rust/Cargo 1.85 or newer, so it currently targets resolute; Ubuntu noble's archive Rust/Cargo 1.75 is too old. Continue using the direct release `.deb` on other supported Ubuntu versions.
+The `Launchpad PPA` workflow creates a vendored Debian source package for Ubuntu resolute (26.04) and uploads it after the matching OpenPGP key is configured. Launchpad builds the binary package `mtop-bin` from source; the `.deb` attached to a GitHub Release is not uploaded directly. Launchpad builds offline with the archive toolchain (resolute ships Rust/Cargo 1.93), so the workspace `rust-version` and every locked dependency must stay at or below that; `sysinfo` is held at 0.38.x because 0.39 requires Rust 1.95. Tags cut before this pin (including `v1.0.0`) cannot be built by Launchpad. Ubuntu noble's archive Rust/Cargo 1.75 is too old. Continue using the direct release `.deb` on other supported Ubuntu versions.
 
 Before the first upload, register the uploader's public OpenPGP key and SSH public key with the Launchpad account, then configure these GitHub Actions values under Settings → Secrets and variables → Actions:
 

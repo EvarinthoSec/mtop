@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 env:
-  RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.release_tag || 'v1.0.0' }}
+  RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.release_tag || 'HEAD' }}
   PPA_REVISION: ${{ github.event.inputs.ppa_revision || '1' }}
   UBUNTU_SERIES: resolute
 
