@@ -87,7 +87,7 @@ Pushing a version tag matching the workspace version builds packages for the mai
 | Arch Linux (`pacman`) | `mtop-linux-x86_64-<version>.pkg.tar.zst` | `sudo pacman -U ./mtop-linux-x86_64-<version>.pkg.tar.zst` |
 | Alpine (`apk`) | `mtop-linux-x86_64-<version>.apk` and `mtop-linux-x86_64-<version>-docs.apk` | `sudo install -m 0644 ./mtop-alpine-signing-key-<version>.rsa.pub /etc/apk/keys/` then `sudo apk add ./mtop-linux-x86_64-<version>.apk ./mtop-linux-x86_64-<version>-docs.apk` |
 
-Release assets use descriptive platform/architecture names and the SemVer version (for example, `mtop-linux-amd64-0.1.0-alpha.1.deb`); package metadata retains each ecosystem's native prerelease version. The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
+Release assets use descriptive platform/architecture names and the SemVer version (for example, `mtop-linux-amd64-1.0.0.deb`); package metadata retains each ecosystem's native prerelease version. The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
 
 For other Linux distributions, install from a checkout with Rust 1.85 or newer:
 

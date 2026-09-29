@@ -15,7 +15,7 @@ The release uses the built-in `GITHUB_TOKEN` with contents write permission to u
 5. It updates `Formula/mtop.rb` in this repository and attaches the same formula to the GitHub release. Homebrew uses this repository as a custom tap, avoiding a separate tap repository.
 6. The first WinGet version is submitted as a community pull request. Once `EvarinthoSec.mtop` exists in `microsoft/winget-pkgs`, later releases use `wingetcreate update --submit`. WinGet acceptance remains subject to upstream validation and review.
 
-To rebuild an already published tag after updating release tooling, run the `Release` workflow manually from `main` and provide `release_tag` (for example `v0.1.0-alpha.1`). This rebuilds the current source, checks that its Cargo version matches, replaces the release assets, and leaves the Git tag unchanged. Use only when source compatibility with the tagged release is confirmed.
+To rebuild an already published tag after updating release tooling, run the `Release` workflow manually from `main` and provide `release_tag` (for example `v1.0.0`). This rebuilds the current source, checks that its Cargo version matches, replaces the release assets, and leaves the Git tag unchanged. Use only when source compatibility with the tagged release is confirmed.
 
 ## First WinGet submission
 
