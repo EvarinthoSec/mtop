@@ -42,6 +42,8 @@ cp -a "$SCRIPT_DIR/debian" "$SOURCE_DIR/debian"
 mkdir -p "$SOURCE_DIR/.cargo" "$SOURCE_DIR/packaging/ppa"
 cp "$SCRIPT_DIR/install-vendor-licenses.py" "$SOURCE_DIR/packaging/ppa/install-vendor-licenses.py"
 (cd "$SOURCE_DIR" && cargo vendor --locked vendor > .cargo/config.toml)
+tar -cJf "$WORKDIR/mtop_${VERSION}.orig.tar.xz" \
+  --exclude="mtop-$VERSION/debian" -C "$WORKDIR" "mtop-$VERSION"
 
 TAG_EPOCH=$(git -C "$REPO_ROOT" log -1 --format=%ct "$TAG")
 CHANGELOG_DATE=$(date -R -u --date="@$TAG_EPOCH")
