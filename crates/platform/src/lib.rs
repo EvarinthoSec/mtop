@@ -6,3 +6,7 @@ pub use npu::*;
 mod platform;
 pub use platform::*;
 pub mod process_control;
+#[cfg(windows)]
+mod windows_pawnio;
+mod windows_telemetry;
+pub use windows_telemetry::*;

@@ -146,6 +146,11 @@ pub fn npu_provider_for() -> Box<dyn NpuProvider> {
         return Box::new(LinuxIvpuProvider::default());
     }
 
+    #[cfg(windows)]
+    {
+        return Box::new(crate::WindowsNpuProvider::new());
+    }
+
     #[allow(unreachable_code)]
     Box::new(NoopNpuProvider)
 }
