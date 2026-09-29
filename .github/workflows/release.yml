@@ -208,7 +208,7 @@ jobs:
             --x86-64-sha256 "$x86_64_sha" \
             --output dist/mtop.rb
           ruby -c dist/mtop.rb
-          (cd dist && sha256sum mtop_*.deb *.rpm *.pkg.tar.zst *.apk *.rsa.pub mtop-*.tar.gz mtop.rb > SHA256SUMS)
+          (cd dist && sha256sum -- mtop_*.deb *.rpm *.pkg.tar.zst *.apk *.rsa.pub mtop-*.tar.gz mtop.rb > SHA256SUMS)
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
