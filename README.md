@@ -82,12 +82,12 @@ Pushing a version tag matching the workspace version builds amd64 packages for t
 
 | Package manager family | Release package | Install |
 | --- | --- | --- |
-| Debian / Ubuntu (`apt`) | `mtop_<version>_amd64.deb` | `sudo apt install ./mtop_<version>_amd64.deb` |
-| Fedora / RHEL / openSUSE (`dnf`, `yum`, `zypper`) | `mtop-<version>-1.x86_64.rpm` | `sudo dnf install ./mtop-<version>-1.x86_64.rpm` (or `sudo rpm -i ...`) |
+| Debian / Ubuntu (`apt`) | `mtop_<asset-version>_amd64.deb` | `sudo apt install ./mtop_<asset-version>_amd64.deb` |
+| Fedora / RHEL / openSUSE (`dnf`, `yum`, `zypper`) | `mtop-<asset-version>-1.x86_64.rpm` | `sudo dnf install ./mtop-<asset-version>-1.x86_64.rpm` (or `sudo rpm -i ...`) |
 | Arch Linux (`pacman`) | `mtop-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U ./mtop-<version>-1-x86_64.pkg.tar.zst` |
 | Alpine (`apk`) | `mtop-<version>-r0.apk` and `mtop-doc-<version>-r0.apk` | `sudo install -m 0644 ./*.rsa.pub /etc/apk/keys/` then `sudo apk add ./mtop-<version>-r0.apk ./mtop-doc-<version>-r0.apk` |
 
-The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
+For release filenames, `<asset-version>` replaces prerelease hyphens with dots (for example, `0.1.0-alpha.1` becomes `0.1.0.alpha.1`); package metadata retains each ecosystem's native prerelease version. The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
 
 For other Linux distributions, install from a checkout with Rust 1.85 or newer:
 
@@ -99,13 +99,13 @@ The project is also listed on [Launchpad](https://launchpad.net/mtop-monitor). T
 
 ### Homebrew
 
-The release workflow attaches a versioned Homebrew formula. Install the latest published formula directly:
+The release workflow attaches a versioned Homebrew formula. Install a formula from a tagged release (this alpha release shown):
 
 ```sh
-brew install --formula https://github.com/EvarinthoSec/mtop/releases/latest/download/mtop.rb
+brew install --formula https://github.com/EvarinthoSec/mtop/releases/download/v0.1.0-alpha.1/mtop.rb
 ```
 
-This URL-based install does not require a separate Homebrew tap.
+This URL-based install does not require a separate Homebrew tap. The GitHub `latest` endpoint excludes prereleases; use the tagged URL for alpha, beta, or release-candidate builds.
 
 ### Ratty 3D panels
 

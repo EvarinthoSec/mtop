@@ -69,11 +69,12 @@ jobs:
           cargo install cargo-generate-rpm --version 0.21.0 --locked
           version="${GITHUB_REF_NAME#v}"
           rpm_version=$(python3 -c 'import sys; print(sys.argv[1].replace("-", "~", 1))' "$version")
+          asset_version="${version//-/.}"
           mkdir -p dist
           cargo generate-rpm --package crates/mtop \
             --set-metadata "version = \"${rpm_version}\"" \
             --auto-req disabled \
-            --output dist
+            --output "dist/mtop-${asset_version}-1.x86_64.rpm"
           sudo apt-get update
           sudo apt-get install --yes rpm
           rpm --query --package --info dist/*.rpm
@@ -215,8 +216,13 @@ jobs:
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
+          prerelease_args=()
+          if [[ "$tag" == *-* ]]; then
+            prerelease_args+=(--prerelease)
+          fi
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" dist/* --clobber
+            gh release edit "$tag" "${prerelease_args[@]}"
           else
-            gh release create "$tag" dist/* --title "$tag" --generate-notes
+            gh release create "$tag" dist/* --title "$tag" --generate-notes "${prerelease_args[@]}"
           fi
