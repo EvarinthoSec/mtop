@@ -87,7 +87,7 @@ Pushing a version tag matching the workspace version builds packages for the mai
 | Arch Linux (`pacman`) | `mtop-linux-x86_64-<version>.pkg.tar.zst` | `sudo pacman -U ./mtop-linux-x86_64-<version>.pkg.tar.zst` |
 | Alpine (`apk`) | `mtop-linux-x86_64-<version>.apk` and `mtop-linux-x86_64-<version>-docs.apk` | `sudo install -m 0644 ./mtop-alpine-signing-key-<version>.rsa.pub /etc/apk/keys/` then `sudo apk add ./mtop-linux-x86_64-<version>.apk ./mtop-linux-x86_64-<version>-docs.apk` |
 
-Release assets use descriptive platform/architecture names and the SemVer version (for example, `mtop-linux-amd64-0.1.0-alpha.1.deb`); package metadata retains each ecosystem's native prerelease version. The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
+Release assets use descriptive platform/architecture names and the SemVer version (for example, `mtop-linux-amd64-1.0.0.deb`); package metadata retains each ecosystem's native prerelease version. The Debian package requires `libc6 >= 2.35`. The RPM package has a `glibc >= 2.35` requirement. The Arch package is built from the checksummed GitHub tag source archive. The Alpine package is compiled natively against musl; its release includes the APK verification public key generated for that build. Verify downloaded files against `SHA256SUMS` before installing.
 
 For other Linux distributions, install from a checkout with Rust 1.85 or newer:
 
@@ -99,14 +99,13 @@ The project is also listed on [Launchpad](https://launchpad.net/mtop-monitor). T
 
 ### Homebrew
 
-The Homebrew formula now lives in this repository at `Formula/mtop.rb`; release automation refreshes it using the repository's built-in `GITHUB_TOKEN`. No separate tap repository or extra Homebrew token is needed. Add the project repository as a custom tap, then install:
+The Homebrew formula lives in the dedicated [`EvarinthoSec/homebrew-repo`](https://github.com/EvarinthoSec/homebrew-repo) tap under `Formula/mtop.rb`:
 
 ```sh
-brew tap EvarinthoSec/mtop https://github.com/EvarinthoSec/mtop.git
-brew install EvarinthoSec/mtop/mtop
+brew install EvarinthoSec/repo/mtop
 ```
 
-If you previously used the separate `EvarinthoSec/homebrew-mtop` tap, remove that tap first with `brew untap EvarinthoSec/mtop`. The release also attaches a versioned formula for direct installation. GitHub Releases containing `alpha`, `beta`, or `snapshot` in the tag are marked as prereleases.
+The release workflow synchronizes the formula into the tap when `HOMEBREW_REPO_TOKEN` is configured; it also attaches a versioned formula to GitHub Releases for direct installation. GitHub Releases containing `alpha`, `beta`, or `snapshot` in the tag are marked as prereleases.
 
 ### Windows / WinGet
 
