@@ -873,7 +873,7 @@ dependencies = [
 
 [[package]]
 name = "mtop"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -893,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "mtop-config"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "directories",
  "serde",
@@ -903,11 +903,11 @@ dependencies = [
 
 [[package]]
 name = "mtop-core"
-version = "1.0.0"
+version = "1.0.1"
 
 [[package]]
 name = "mtop-platform"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "libc",
@@ -920,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "mtop-runtime"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "mtop-config",
  "mtop-core",
@@ -929,7 +929,7 @@ dependencies = [
 
 [[package]]
 name = "mtop-tui"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "chrono",
