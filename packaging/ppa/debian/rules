@@ -1,0 +1,22 @@
+#!/usr/bin/make -f
+export CARGO_NET_OFFLINE = true
+
+%:
+	dh $@ --buildsystem=makefile
+
+override_dh_auto_clean:
+	rm -rf target
+
+override_dh_auto_configure:
+	:
+
+override_dh_auto_build:
+	cargo build --locked --offline --release --package mtop
+
+override_dh_auto_test:
+	cargo test --locked --offline --package mtop
+
+override_dh_auto_install:
+	install -D -m 0755 target/release/mtop debian/tmp/usr/bin/mtop
+	install -D -m 0644 packaging/mtop.desktop debian/tmp/usr/share/applications/mtop.desktop
+	python3 packaging/ppa/install-vendor-licenses.py vendor debian/tmp/usr/share/doc/mtop-bin/vendor-licenses

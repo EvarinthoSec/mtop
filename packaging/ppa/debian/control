@@ -1,0 +1,14 @@
+Source: mtop
+Section: utils
+Priority: optional
+Maintainer: EvarinthoSec <evarin@anantix.network>
+Build-Depends: debhelper-compat (= 13), build-essential, cargo (>= 1.85), rustc (>= 1.85), python3
+Standards-Version: 4.7.0
+Homepage: https://github.com/EvarinthoSec/mtop
+Rules-Requires-Root: no
+
+Package: mtop-bin
+Architecture: amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}, libc6 (>= 2.35), libgcc-s1
+Description: Cross-platform terminal system monitor
+ A fast terminal dashboard for CPU, memory, disks, networks, processes, and accelerators.
