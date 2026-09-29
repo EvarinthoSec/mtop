@@ -1,0 +1,6 @@
+interval_ms = 1000
+theme = "neon"
+process_limit = 25
+process_sort = "cpu"
+show_gpu = true
+compact = false

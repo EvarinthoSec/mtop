@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=mtop
+GenericName=Terminal System Monitor
+Comment=Live terminal system monitor
+Exec=mtop
+Terminal=true
+Categories=System;TerminalEmulator;
+Keywords=system;monitor;cpu;memory;processes;

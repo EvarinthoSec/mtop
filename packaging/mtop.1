@@ -1,0 +1,122 @@
+.TH MTOP 1 "September 27, 2026" "mtop 0.1.0" "User Commands"
+.SH NAME
+mtop \- terminal system monitor
+.SH SYNOPSIS
+.B mtop
+.RB [ \-i | --interval-ms\~milliseconds ]
+.RB [ --theme\~name ]
+.RB [ --config\~path ]
+.RB [ --once ]
+.SH DESCRIPTION
+.B mtop
+is a terminal user interface for viewing CPU, memory, swap, disk, network,
+process, uptime, and best-effort GPU information.
+.PP
+Without
+.BR --once ,
+.B mtop
+enters the terminal UI and refreshes system data periodically. The default
+refresh interval is 1000 milliseconds. Values below 100 milliseconds are
+clamped by the interactive collector. Unsupported or unavailable metrics are
+shown as unavailable or reported as warnings; they do not prevent the monitor
+from starting when the common system provider can run.
+.SH OPTIONS
+.TP
+.BR -i , " " --interval-ms " " milliseconds
+Set the refresh interval in milliseconds. The default is 1000. Interactive
+refreshes are limited to the 100\-10000 millisecond range.
+.TP
+.BI --theme\~name
+Select a built-in color theme: \fBneon\fR (default), \fBamber\fR, or \fBmono\fR.
+.TP
+.BI --config\~path
+Read configuration from the specified TOML file. A missing file uses built-in
+defaults; a file that exists but is malformed causes an error and a non-zero
+exit. No configuration file is created automatically, and the current
+implementation does not search a default path when this option is omitted.
+.TP
+.B --once
+Collect one snapshot, print a concise text report containing CPU, memory, and
+process counts, and exit without entering the interactive terminal UI.
+.SH KEYBOARD SHORTCUTS
+.TP
+.B q, Esc
+Quit the monitor.
+.TP
+.B ?, h
+Toggle the keyboard help overlay.
+.TP
+.B r
+Request an immediate refresh.
+.TP
+.B Space
+Pause or resume periodic collection.
+.TP
+.B +, =
+Increase the refresh interval by 100 milliseconds, up to 10 seconds.
+.TP
+.B -
+Decrease the refresh interval by 100 milliseconds, down to 100 milliseconds.
+.TP
+.B j, Down
+Select the next process.
+.TP
+.B k, Up
+Select the previous process.
+.SH CONFIGURATION
+The optional configuration file is TOML and is read only when supplied with
+.BR --config .
+Supported fields are:
+.PP
+.nf
+interval_ms = 1000
+theme = "neon"
+process_limit = 25
+process_sort = "cpu"
+show_gpu = true
+.fi
+.PP
+The built-in defaults are used when no file is supplied or the specified file
+does not exist. Command-line values for
+.B --interval-ms
+and
+.B --theme
+override the corresponding TOML values.
+.SH PLATFORM AND GPU CAVEATS
+The common collector uses the Rust sysinfo dependency, so metric availability
+depends on the operating system, permissions,
+and the data exposed by the host. This repository's current runtime evidence
+is native-tested on macOS; Linux and BSD-family targets are compile-only or
+otherwise unverified here. Do not infer runtime support from a successful
+cross-compilation.
+.PP
+GPU reporting is optional and best effort. The default build does not require a
+GPU provider. The optional
+.B gpu-nvidia
+feature provides the NVIDIA backend only on supported Linux builds; hardware,
+drivers, and NVML availability are still required. Other GPU providers are not
+currently exposed.
+.SH EXIT STATUS
+.TP
+.B 0
+The requested snapshot or interactive session completed normally.
+.TP
+.B non-zero
+An argument, configuration, terminal, or collection setup error prevented
+normal completion.
+.SH EXAMPLES
+.TP
+.B mtop
+Start the interactive monitor with default settings.
+.TP
+.B mtop --interval-ms 250 --theme amber
+Refresh four times per second using the amber theme.
+.TP
+.B mtop --config ~/.config/mtop/config.toml
+Read settings from an explicit TOML configuration file.
+.TP
+.B mtop --once
+Print one snapshot for a script or health check.
+.SH SEE ALSO
+.BR top (1),
+.BR htop (1)
