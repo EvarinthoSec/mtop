@@ -7,12 +7,12 @@ class Mtop < Formula
   on_macos do
     on_arm do
       url "https://github.com/EvarinthoSec/mtop/releases/download/v#{version}/mtop-macos-arm64-#{version}.tar.gz"
-      sha256 "afc94d90ead250646bc5908c6813380022031518340aeefb9d2ef1be6752fa81"
+      sha256 "3229298bd712b18ea759a37a714d1b24786de6c2a3e950e277ad2a5332b0ec0b"
     end
 
     on_intel do
       url "https://github.com/EvarinthoSec/mtop/releases/download/v#{version}/mtop-macos-x86_64-#{version}.tar.gz"
-      sha256 "87add613ae3af40ebf2809385edfa3e855112e06cd2f92d7726f4dcda7de9497"
+      sha256 "9ffd8b1ea79f7d0606072c6621d29d9ee79829aeb0c3f4cdc2ad2fb16b3ac27c"
     end
   end
 
