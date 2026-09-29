@@ -68,7 +68,7 @@ jobs:
           set -euo pipefail
           cargo install cargo-generate-rpm --version 0.21.0 --locked
           version="${GITHUB_REF_NAME#v}"
-          rpm_version="${version/-/~}"
+          rpm_version=$(python3 -c 'import sys; print(sys.argv[1].replace("-", "~", 1))' "$version")
           mkdir -p dist
           cargo generate-rpm --package crates/mtop \
             --set-metadata "version = \"${rpm_version}\"" \
