@@ -108,7 +108,8 @@ jobs:
             exit 0
           fi
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends devscripts dput gnupg openssh-client
+          sudo apt-get install --yes --no-install-recommends devscripts dput gnupg openssh-client python3-paramiko
+          python3 -c 'import paramiko'
           export GNUPGHOME="$RUNNER_TEMP/launchpad-gnupg"
           install -d -m 0700 "$GNUPGHOME"
           printf '%s' "$LAUNCHPAD_GPG_PRIVATE_KEY" | gpg --batch --homedir "$GNUPGHOME" --import
