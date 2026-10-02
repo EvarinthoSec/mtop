@@ -1664,7 +1664,13 @@ impl AppView {
     /// the single source of truth for key handling, shared by `run_tui` and
     /// tests, so filter-mode text capture can never diverge from live behavior.
     pub fn feed_key(&mut self, key: KeyEvent) -> KeyOutcome {
-        use crossterm::event::KeyModifiers;
+        use crossterm::event::{KeyEventKind, KeyModifiers};
+
+        // Windows reports both press and release events; only presses and
+        // repeats should reach the state machine.
+        if key.kind == KeyEventKind::Release {
+            return KeyOutcome::Continue;
+        }
 
         // 0. ctrl+z suspends from anywhere, like a shell job.
         if key.code == KeyCode::Char('z') && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -1701,11 +1707,11 @@ impl AppView {
                 KeyCode::Enter => {
                     let value = self.nice_picker.take().and_then(|b| b.parse::<i32>().ok());
                     let pid = self.selected_pid();
-                    if let (Some(n), Some(pid)) = (value, pid) {
-                        if (-20..=19).contains(&n) {
-                            self.pending_nice = Some((pid, n));
-                            return KeyOutcome::DispatchRenice;
-                        }
+                    if let (Some(n), Some(pid)) = (value, pid)
+                        && (-20..=19).contains(&n)
+                    {
+                        self.pending_nice = Some((pid, n));
+                        return KeyOutcome::DispatchRenice;
                     }
                 }
                 _ => {}
@@ -2422,22 +2428,22 @@ impl AppView {
 
     /// Feed a character into the signal picker (digits only, max 2).
     pub fn signal_picker_input(&mut self, c: char) {
-        if let Some(buf) = self.signal_picker.as_mut() {
-            if c.is_ascii_digit() && buf.len() < 2 {
-                buf.push(c);
-            }
+        if let Some(buf) = self.signal_picker.as_mut()
+            && c.is_ascii_digit()
+            && buf.len() < 2
+        {
+            buf.push(c);
         }
     }
 
     /// Close the picker; if the buffer is a valid signal number, stage a
     /// confirmation for the selected process. Invalid input just cancels.
     pub fn signal_picker_confirm(&mut self) {
-        if let Some(buf) = self.signal_picker.take() {
-            if let Ok(n) = buf.parse::<i32>() {
-                if let Some(sig) = Signal::from_number(n) {
-                    self.request_signal(sig);
-                }
-            }
+        if let Some(buf) = self.signal_picker.take()
+            && let Ok(n) = buf.parse::<i32>()
+            && let Some(sig) = Signal::from_number(n)
+        {
+            self.request_signal(sig);
         }
     }
 
@@ -5431,7 +5437,7 @@ pub fn run_tui(
                         let area = Rect::new(0, 0, size.width, size.height);
                         if let Some(key) = view.menu_mouse_key(m, area) {
                             match view.feed_key(key) {
-                                KeyOutcome::Quit => quit = true,
+                                KeyOutcome::Quit => break,
                                 KeyOutcome::WireRefresh => {
                                     let _ = commands
                                         .try_sync_interval(view.refresh_interval, view.paused);

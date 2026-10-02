@@ -130,17 +130,46 @@ fn first_real_collect_is_explicitly_warming_up() {
 #[test]
 fn collector_returns_more_than_display_limit_for_ui_side_sorting() {
     // The collector must not pre-truncate to the small display limit;
-    // the UI owns display sorting/limiting now.
+    // the UI owns display sorting/limiting now. Spawn our own children so the
+    // host (e.g. a minimal build chroot) need not already run >25 processes.
+    struct Children(Vec<std::process::Child>);
+    impl Drop for Children {
+        fn drop(&mut self) {
+            for child in &mut self.0 {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+    let spawn = || {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut cmd = std::process::Command::new("ping");
+            cmd.args(["-n", "60", "127.0.0.1"]);
+            cmd
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut cmd = std::process::Command::new("sleep");
+            cmd.arg("60");
+            cmd
+        };
+        cmd.stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn helper process")
+    };
+    let children = Children((0..30).map(|_| spawn()).collect());
+
     let mut c = SysinfoCollector::new(&Config::default());
     let _ = c.collect(); // warm up cpu%
     std::thread::sleep(Duration::from_millis(120));
     let snap = c.collect();
-    // A live desktop/CI host has well over 25 processes; assert we kept them.
     assert!(
         snap.processes.len() > 25,
         "expected full process set, got {}",
         snap.processes.len()
     );
+    drop(children);
 }
 
 #[test]

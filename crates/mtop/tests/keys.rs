@@ -2,7 +2,7 @@
 //! btop has two layouts: default, and `vim_keys` (h/j/k/l/g/G navigate, so
 //! help moves to H and kill to K). mtop defaults to vim_keys ON to keep its
 //! established j/k navigation; the options menu switches to btop defaults.
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use mtop::app::Action;
 use mtop::ui::key_to_action_with;
 
@@ -96,6 +96,26 @@ fn unbound_letters_do_nothing() {
         assert_eq!(key_to_action_with(ch('x'), vim), None);
         assert_eq!(key_to_action_with(ch('w'), vim), None);
     }
+}
+
+#[test]
+fn release_key_events_are_ignored() {
+    use mtop::model::SystemSnapshot;
+    use mtop::theme::Theme;
+    use mtop::ui::{AppView, KeyOutcome};
+
+    let mut view = AppView::new(SystemSnapshot::default(), Theme::from_name("neon"));
+    let release = KeyEvent::new_with_kind(
+        KeyCode::Char('5'),
+        KeyModifiers::NONE,
+        KeyEventKind::Release,
+    );
+
+    assert_eq!(view.feed_key(release), KeyOutcome::Continue);
+    assert!(view.show_gpu, "release must not dispatch the toggle");
+
+    view.feed_key(ch('5'));
+    assert!(!view.show_gpu, "the following press toggles exactly once");
 }
 
 #[test]

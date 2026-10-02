@@ -116,10 +116,10 @@ pub fn run() -> anyhow::Result<()> {
     // Persist what the user changed in the options panel / box toggles.
     // btop save_config_on_exit=false keeps the file as the user wrote it.
     let save = config.save_config_on_exit;
-    if let (true, Ok(final_view), Some(path)) = (save, &result, config_path.as_deref()) {
-        if let Err(error) = final_view.to_config(&config).save(path) {
-            eprintln!("mtop: could not save config: {error}");
-        }
+    if let (true, Ok(final_view), Some(path)) = (save, &result, config_path.as_deref())
+        && let Err(error) = final_view.to_config(&config).save(path)
+    {
+        eprintln!("mtop: could not save config: {error}");
     }
     result.map(|_| ())
 }
