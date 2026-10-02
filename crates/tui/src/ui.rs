@@ -1664,7 +1664,13 @@ impl AppView {
     /// the single source of truth for key handling, shared by `run_tui` and
     /// tests, so filter-mode text capture can never diverge from live behavior.
     pub fn feed_key(&mut self, key: KeyEvent) -> KeyOutcome {
-        use crossterm::event::KeyModifiers;
+        use crossterm::event::{KeyEventKind, KeyModifiers};
+
+        // Windows reports both press and release events; only presses and
+        // repeats should reach the state machine.
+        if key.kind == KeyEventKind::Release {
+            return KeyOutcome::Continue;
+        }
 
         // 0. ctrl+z suspends from anywhere, like a shell job.
         if key.code == KeyCode::Char('z') && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -5431,7 +5437,7 @@ pub fn run_tui(
                         let area = Rect::new(0, 0, size.width, size.height);
                         if let Some(key) = view.menu_mouse_key(m, area) {
                             match view.feed_key(key) {
-                                KeyOutcome::Quit => quit = true,
+                                KeyOutcome::Quit => break,
                                 KeyOutcome::WireRefresh => {
                                     let _ = commands
                                         .try_sync_interval(view.refresh_interval, view.paused);
