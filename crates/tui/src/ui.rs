@@ -1308,6 +1308,96 @@ impl AppView {
         }
     }
 
+    /// Translate mouse input over a menu into the existing keyboard reducer.
+    /// Hit geometry follows `draw_main_menu` and `draw_options`, using the
+    /// current terminal area so centered popups remain clickable after resize.
+    pub fn menu_mouse_key(
+        &mut self,
+        m: crossterm::event::MouseEvent,
+        area: Rect,
+    ) -> Option<KeyEvent> {
+        use crossterm::event::{KeyModifiers, MouseButton};
+
+        if self.menu.is_none()
+            || self.disable_mouse
+            || self.pending_signal.is_some()
+            || self.signal_picker.is_some()
+            || self.nice_picker.is_some()
+            || self.show_help
+        {
+            return None;
+        }
+
+        let key = |code| Some(KeyEvent::new(code, KeyModifiers::NONE));
+        match m.kind {
+            MouseEventKind::ScrollUp => return key(KeyCode::Up),
+            MouseEventKind::ScrollDown => return key(KeyCode::Down),
+            MouseEventKind::Down(MouseButton::Left) => {}
+            _ => return None,
+        }
+
+        let position = ratatui::layout::Position::new(m.column, m.row);
+        match self.menu.expect("menu was checked above") {
+            Menu::Main { .. } => {
+                let popup = centered(area, 36, 13);
+                if !popup.contains(position) {
+                    return key(KeyCode::Esc);
+                }
+                let inner = Rect {
+                    x: popup.x.saturating_add(1),
+                    y: popup.y.saturating_add(1),
+                    width: popup.width.saturating_sub(2),
+                    height: popup.height.saturating_sub(2),
+                };
+                for (index, _) in MAIN_MENU_ITEMS.iter().enumerate() {
+                    let row = inner.y.saturating_add(4 + index as u16 * 2);
+                    let hint_row = inner.y.saturating_add(inner.height.saturating_sub(1));
+                    if m.row == row
+                        && m.column >= inner.x
+                        && m.column < inner.x.saturating_add(inner.width)
+                        && row < inner.y.saturating_add(inner.height)
+                        && row != hint_row
+                    {
+                        self.menu = Some(Menu::Main { selected: index });
+                        return key(KeyCode::Enter);
+                    }
+                }
+                None
+            }
+            Menu::Options { .. } => {
+                let popup = centered(area, 64, OPTION_ROWS.len() as u16 + 7);
+                if !popup.contains(position) {
+                    return key(KeyCode::Esc);
+                }
+                let inner = Rect {
+                    x: popup.x.saturating_add(1),
+                    y: popup.y.saturating_add(1),
+                    width: popup.width.saturating_sub(2),
+                    height: popup.height.saturating_sub(2),
+                };
+                for (index, _) in OPTION_ROWS.iter().enumerate() {
+                    let row = inner.y.saturating_add(1 + index as u16);
+                    if m.row != row
+                        || row >= inner.y.saturating_add(inner.height)
+                        || m.column < inner.x
+                        || m.column >= inner.x.saturating_add(inner.width)
+                    {
+                        continue;
+                    }
+                    self.menu = Some(Menu::Options { selected: index });
+                    let offset = m.column.saturating_sub(inner.x);
+                    // draw_options renders: " {label:<18}◂ {value:^10} ▸"
+                    return match offset {
+                        19..=25 => key(KeyCode::Left),
+                        26..=32 => key(KeyCode::Right),
+                        _ => None,
+                    };
+                }
+                None
+            }
+        }
+    }
+
     /// Map an absolute click (col,row) to a visible process index, or None if
     /// the click is outside the data rows of the process table.
     pub fn proc_row_at(&self, col: u16, row: u16) -> Option<usize> {
@@ -5337,7 +5427,22 @@ pub fn run_tui(
             if event::poll(Duration::from_millis(50))? {
                 match event::read()? {
                     Event::Mouse(m) => {
-                        view.feed_mouse(m);
+                        let size = terminal.size()?;
+                        let area = Rect::new(0, 0, size.width, size.height);
+                        if let Some(key) = view.menu_mouse_key(m, area) {
+                            match view.feed_key(key) {
+                                KeyOutcome::Quit => quit = true,
+                                KeyOutcome::WireRefresh => {
+                                    let _ = commands
+                                        .try_sync_interval(view.refresh_interval, view.paused);
+                                }
+                                // Menu mouse keys cannot dispatch process actions,
+                                // reload config, or suspend the terminal.
+                                _ => {}
+                            }
+                        } else {
+                            view.feed_mouse(m);
+                        }
                     }
                     Event::Key(key) => match view.feed_key(key) {
                         KeyOutcome::Quit => break,
