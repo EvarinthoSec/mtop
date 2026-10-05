@@ -33,6 +33,8 @@ fn snapshot_represents_cross_platform_metrics_and_optional_fields() {
             available: true,
             overall_percent: 37.5,
             per_core_percent: vec![25.0, 50.0],
+            performance_core_count: None,
+            efficiency_core_count: None,
             frequency_mhz: Some(3_200),
             cpu_name: Some("Intel Core i7-5775C".into()),
             temperature_celsius: None,
@@ -82,6 +84,7 @@ fn snapshot_represents_cross_platform_metrics_and_optional_fields() {
         }],
         npus: Vec::new(),
         power: Default::default(),
+        fans: Default::default(),
         battery: None,
         warnings: vec!["GPU memory unavailable".into()],
     };

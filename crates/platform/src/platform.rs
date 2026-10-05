@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::config::{Config, ProcessSort};
+use crate::fan::{FanProvider, fan_provider_for};
 use crate::model::{
     BatterySnapshot, BatteryState, CpuSnapshot, DiskSnapshot, GpuSnapshot, MemorySnapshot,
-    NetworkSnapshot, PowerSnapshot, ProcessSnapshot, SystemSnapshot,
+    NetworkSnapshot, ProcessSnapshot, SystemSnapshot,
 };
 use crate::npu::{NpuProvider, npu_provider_for};
 use crate::windows_telemetry::PlatformSensors;
@@ -37,13 +38,37 @@ pub fn current_os_capabilities() -> OsCapabilities {
 
 fn power_telemetry_note() -> String {
     if cfg!(target_os = "macos") {
-        "macOS powermetrics requires elevated privileges; mtop does not elevate automatically."
+        "Run mtop with sudo to read macOS component power; ANE utilization is not exposed by powermetrics."
     } else if cfg!(target_os = "windows") {
         "No Windows Energy Meter (RAPL) counters found; unavailable readings remain N/A."
     } else {
         "No supported component-power source is active; unavailable readings remain N/A."
     }
     .to_owned()
+}
+
+#[cfg(target_os = "macos")]
+fn mac_core_count(name: &'static std::ffi::CStr) -> Option<usize> {
+    let mut count = 0u32;
+    let mut size = std::mem::size_of::<u32>();
+    let result = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            (&mut count as *mut u32).cast(),
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    (result == 0 && count > 0).then_some(count as usize)
+}
+
+#[cfg(target_os = "macos")]
+fn mac_core_counts() -> (Option<usize>, Option<usize>) {
+    (
+        mac_core_count(c"hw.perflevel0.logicalcpu"),
+        mac_core_count(c"hw.perflevel1.logicalcpu"),
+    )
 }
 
 #[cfg(target_os = "linux")]
@@ -615,6 +640,7 @@ pub struct SysinfoCollector {
     npu_provider: Box<dyn NpuProvider>,
     /// Extra power/thermal sources `sysinfo` lacks (Windows RAPL, ACPI zones).
     platform_sensors: PlatformSensors,
+    fan_provider: Box<dyn FanProvider>,
     users: Users,
     samples_since_user_refresh: u32,
 }
@@ -648,6 +674,7 @@ impl SysinfoCollector {
             gpu_provider,
             npu_provider: npu_provider_for(),
             platform_sensors: PlatformSensors::new(),
+            fan_provider: fan_provider_for(),
             users: Users::new_with_refreshed_list(),
             samples_since_user_refresh: 0,
         }
@@ -702,6 +729,10 @@ impl SnapshotProvider for SysinfoCollector {
         } else {
             Some(cpus.iter().map(|cpu| cpu.frequency()).sum::<u64>() / cpus.len() as u64)
         };
+        #[cfg(target_os = "macos")]
+        let (performance_core_count, efficiency_core_count) = mac_core_counts();
+        #[cfg(not(target_os = "macos"))]
+        let (performance_core_count, efficiency_core_count) = (None, None);
         let load = System::load_average();
         let gpus = match self.gpu_provider.collect() {
             Ok(gpus) => gpus,
@@ -712,6 +743,8 @@ impl SnapshotProvider for SysinfoCollector {
         };
         warnings.extend(self.gpu_provider.take_warnings());
         let npus = self.npu_provider.collect();
+        let fans = self.fan_provider.collect();
+        let mut power = self.npu_provider.power_snapshot();
 
         let sensors: Vec<(String, Option<f32>)> = self
             .components
@@ -725,14 +758,11 @@ impl SnapshotProvider for SysinfoCollector {
             (None, cores) if cores.is_empty() => platform_readings.cpu_temperatures(),
             temps => temps,
         };
-        let power = if platform_readings.has_power() {
-            platform_readings.power.clone()
-        } else {
-            PowerSnapshot {
-                note: Some(power_telemetry_note()),
-                ..PowerSnapshot::default()
-            }
-        };
+        if platform_readings.has_power() {
+            power = platform_readings.power.clone();
+        } else if power.note.is_none() && !cfg!(target_os = "macos") {
+            power.note = Some(power_telemetry_note());
+        }
 
         SystemSnapshot {
             captured_at: SystemTime::now(),
@@ -751,6 +781,8 @@ impl SnapshotProvider for SysinfoCollector {
                 } else {
                     vec![0.0; cpus.len()]
                 },
+                performance_core_count,
+                efficiency_core_count,
                 frequency_mhz,
                 cpu_name: cpus
                     .first()
@@ -772,6 +804,7 @@ impl SnapshotProvider for SysinfoCollector {
             gpus,
             npus,
             power,
+            fans,
             battery: self.collect_battery(),
             warnings,
         }

@@ -12,6 +12,8 @@ fn snap() -> SystemSnapshot {
             available: true,
             overall_percent: 40.0,
             per_core_percent: vec![30.0, 50.0],
+            performance_core_count: None,
+            efficiency_core_count: None,
             per_core_temperature: vec![55.0, 60.0],
             temperature_celsius: Some(61.0),
             frequency_mhz: Some(3200),

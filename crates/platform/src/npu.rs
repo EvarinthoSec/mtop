@@ -5,7 +5,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use mtop_core::model::NpuSnapshot;
+#[cfg(target_os = "macos")]
+use std::{
+    process::Command,
+    sync::{Arc, Mutex},
+    thread,
+};
+
+use mtop_core::model::{NpuSnapshot, PowerSnapshot};
 
 const IVPU_SYSFS_ROOT: &str = "/sys/bus/pci/drivers/intel_vpu";
 const IVPU_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
@@ -36,6 +43,10 @@ fn parse_sysfs_counter(contents: &str) -> Option<u64> {
 /// Source of platform NPU snapshots. Unsupported platforms return no devices.
 pub trait NpuProvider: Send {
     fn collect(&mut self) -> Vec<NpuSnapshot>;
+
+    fn power_snapshot(&self) -> PowerSnapshot {
+        PowerSnapshot::default()
+    }
 }
 
 #[derive(Default)]
@@ -141,6 +152,11 @@ impl NpuProvider for LinuxIvpuProvider {
 
 /// Create the best-effort NPU provider for this target.
 pub fn npu_provider_for() -> Box<dyn NpuProvider> {
+    #[cfg(target_os = "macos")]
+    {
+        return Box::new(MacPowermetricsProvider::new());
+    }
+
     #[cfg(target_os = "linux")]
     {
         return Box::new(LinuxIvpuProvider::default());
@@ -153,6 +169,115 @@ pub fn npu_provider_for() -> Box<dyn NpuProvider> {
 
     #[allow(unreachable_code)]
     Box::new(NoopNpuProvider)
+}
+
+#[cfg(target_os = "macos")]
+struct MacPowermetricsProvider {
+    latest: Arc<Mutex<PowerSnapshot>>,
+}
+
+#[cfg(target_os = "macos")]
+impl MacPowermetricsProvider {
+    fn new() -> Self {
+        let needs_root = unsafe { libc::geteuid() } != 0;
+        let latest = Arc::new(Mutex::new(PowerSnapshot {
+            note: needs_root.then(|| {
+                "Run mtop with sudo to read macOS component power and ANE telemetry.".to_owned()
+            }),
+            ..PowerSnapshot::default()
+        }));
+
+        if !needs_root {
+            let samples = Arc::clone(&latest);
+            thread::spawn(move || {
+                loop {
+                    let result = Command::new("/usr/bin/powermetrics")
+                        .args([
+                            "--samplers",
+                            "cpu_power,gpu_power,ane_power",
+                            "-i",
+                            "1000",
+                            "-n",
+                            "1",
+                        ])
+                        .output();
+                    let snapshot = match result {
+                        Ok(output) if output.status.success() => {
+                            parse_powermetrics(&String::from_utf8_lossy(&output.stdout))
+                        }
+                        Ok(output) => PowerSnapshot {
+                            note: Some(String::from_utf8_lossy(&output.stderr).trim().to_owned()),
+                            ..PowerSnapshot::default()
+                        },
+                        Err(error) => PowerSnapshot {
+                            note: Some(format!("Could not run powermetrics: {error}")),
+                            ..PowerSnapshot::default()
+                        },
+                    };
+                    if let Ok(mut current) = samples.lock() {
+                        *current = snapshot;
+                    }
+                    thread::sleep(Duration::from_secs(4));
+                }
+            });
+        }
+
+        Self { latest }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl NpuProvider for MacPowermetricsProvider {
+    fn collect(&mut self) -> Vec<NpuSnapshot> {
+        let Ok(power) = self.latest.lock() else {
+            return Vec::new();
+        };
+        power.npu_watts.map_or_else(Vec::new, |watts| {
+            vec![NpuSnapshot {
+                name: "Apple Neural Engine".to_owned(),
+                utilization_percent: None,
+                power_watts: Some(watts),
+                frequency_mhz: None,
+            }]
+        })
+    }
+
+    fn power_snapshot(&self) -> PowerSnapshot {
+        self.latest
+            .lock()
+            .map(|snapshot| snapshot.clone())
+            .unwrap_or_default()
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn parse_powermetrics(output: &str) -> PowerSnapshot {
+    fn watts(output: &str, label: &str) -> Option<f32> {
+        output
+            .lines()
+            .filter_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                if !name.trim().eq_ignore_ascii_case(label) {
+                    return None;
+                }
+                let mut parts = value.split_whitespace();
+                let amount = parts.next()?.parse::<f32>().ok()?;
+                match parts.next()? {
+                    "mW" => Some(amount / 1000.0),
+                    "W" => Some(amount),
+                    _ => None,
+                }
+            })
+            .next_back()
+    }
+
+    PowerSnapshot {
+        cpu_watts: watts(output, "CPU Power"),
+        gpu_watts: watts(output, "GPU Power"),
+        npu_watts: watts(output, "ANE Power"),
+        note: None,
+        ..PowerSnapshot::default()
+    }
 }
 
 #[cfg(test)]

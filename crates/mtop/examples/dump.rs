@@ -26,6 +26,8 @@ fn main() {
             available: true,
             overall_percent: 37.5,
             per_core_percent: vec![62.0, 12.0, 88.0, 5.0, 44.0, 22.0, 71.0, 9.0],
+            performance_core_count: None,
+            efficiency_core_count: None,
             frequency_mhz: Some(3600),
             cpu_name: Some("Intel Core i7-5775C".into()),
             temperature_celsius: Some(58.0),
@@ -100,6 +102,21 @@ fn main() {
             package_watts: Some(7.6),
             note: Some("Estimated on supported hardware".into()),
         },
+        fans: mtop::model::FanTelemetry {
+            status: mtop::model::FanStatus::Available,
+            fans: vec![
+                mtop::model::FanSnapshot {
+                    name: "Fan 1".into(),
+                    rpm: 1_420.0,
+                    max_rpm: Some(5_500.0),
+                },
+                mtop::model::FanSnapshot {
+                    name: "Fan 2".into(),
+                    rpm: 1_380.0,
+                    max_rpm: Some(5_500.0),
+                },
+            ],
+        },
         battery: None,
         warnings: vec![],
     };
@@ -114,6 +131,7 @@ fn main() {
         Some("processes" | "proc") => DashboardPage::Processes,
         Some("storage" | "disk") => DashboardPage::Storage,
         Some("power") => DashboardPage::Power,
+        Some("fan" | "fans") => DashboardPage::Fan,
         _ => DashboardPage::Overview,
     };
     mtop::ui::set_palette(mtop::ui::Palette::from_name(&theme));

@@ -3,6 +3,8 @@ pub use mtop_core::{SnapshotProvider, format, model};
 
 mod npu;
 pub use npu::*;
+mod fan;
+pub use fan::*;
 mod platform;
 pub use platform::*;
 pub mod process_control;

@@ -15,13 +15,16 @@ use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, MouseEventKind,
     },
-    execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    execute, queue,
+    terminal::{
+        BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen,
+        disable_raw_mode, enable_raw_mode,
+    },
 };
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Row, Table},
@@ -34,7 +37,7 @@ use crate::{
         format_bytes, format_bytes_compact, format_duration, format_percent, format_rate,
         truncate_text,
     },
-    model::SystemSnapshot,
+    model::{FanStatus, SystemSnapshot},
     process_control::{ProcessController, Signal},
     theme::Theme,
 };
@@ -962,10 +965,11 @@ pub enum DashboardPage {
     Processes,
     Storage,
     Power,
+    Fan,
 }
 
 impl DashboardPage {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Overview,
         Self::Cpu,
         Self::Memory,
@@ -975,6 +979,7 @@ impl DashboardPage {
         Self::Processes,
         Self::Storage,
         Self::Power,
+        Self::Fan,
     ];
 
     fn next(self) -> Self {
@@ -1000,6 +1005,8 @@ impl DashboardPage {
             (Self::Storage, true) => "Disk",
             (Self::Storage, false) => "Storage",
             (Self::Power, _) => "Power",
+            (Self::Fan, true) => "Fan",
+            (Self::Fan, false) => "Fans",
         }
     }
 }
@@ -1756,6 +1763,20 @@ impl AppView {
         if self.show_help && matches!(key.code, KeyCode::Esc) {
             self.show_help = false;
             return KeyOutcome::Continue;
+        }
+
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            match key.code {
+                KeyCode::Left => {
+                    self.page = self.page.previous();
+                    return KeyOutcome::Continue;
+                }
+                KeyCode::Right => {
+                    self.page = self.page.next();
+                    return KeyOutcome::Continue;
+                }
+                _ => {}
+            }
         }
 
         match key.code {
@@ -3108,6 +3129,7 @@ fn draw_dashboard_page(frame: &mut ratatui::Frame<'_>, body: Rect, view: &AppVie
         DashboardPage::Power => {
             with_graph_symbol(view.box_symbol("cpu"), || draw_power(frame, body, view));
         }
+        DashboardPage::Fan => draw_fans(frame, body, view),
     }
 }
 
@@ -3320,6 +3342,17 @@ fn draw_npu(frame: &mut ratatui::Frame<'_>, area: Rect, view: &AppView) {
         return;
     }
 
+    if view
+        .snapshot
+        .power
+        .note
+        .as_deref()
+        .is_some_and(|note| note.contains("sudo"))
+    {
+        draw_fan_banner(frame, inner, "NOT ROOT");
+        return;
+    }
+
     let npu = view.snapshot.npus.first();
     let utilization = npu
         .and_then(|npu| npu.utilization_percent)
@@ -3411,6 +3444,14 @@ fn draw_power(frame: &mut ratatui::Frame<'_>, area: Rect, view: &AppView) {
     }
 
     let power = &view.snapshot.power;
+    if power
+        .note
+        .as_deref()
+        .is_some_and(|note| note.contains("sudo"))
+    {
+        draw_fan_banner(frame, inner, "NOT ROOT");
+        return;
+    }
     let rows = [
         ("CPU", power.cpu_watts),
         ("GPU", power.gpu_watts),
@@ -3418,11 +3459,6 @@ fn draw_power(frame: &mut ratatui::Frame<'_>, area: Rect, view: &AppView) {
         ("DRAM", power.dram_watts),
         ("Package", power.package_watts),
     ];
-    let summary_w = (inner.width / 3).max(18).min(inner.width);
-    let summary = Rect {
-        width: summary_w,
-        ..inner
-    };
     for (index, (name, watts)) in rows.iter().enumerate() {
         let y = inner.y + index as u16;
         if y >= inner.y + inner.height {
@@ -3434,7 +3470,7 @@ fn draw_power(frame: &mut ratatui::Frame<'_>, area: Rect, view: &AppView) {
             Rect {
                 y,
                 height: 1,
-                ..summary
+                ..inner
             },
         );
     }
@@ -3454,31 +3490,31 @@ fn draw_power(frame: &mut ratatui::Frame<'_>, area: Rect, view: &AppView) {
     } else {
         (&view.history.package_power_mw, None, "Power history")
     };
-    if inner.width > summary_w + 4 {
+    if inner.height > 6 {
         let graph = Rect {
-            x: inner.x + summary_w + 1,
-            width: inner.width.saturating_sub(summary_w + 1),
+            y: inner.y + 5,
+            height: 1,
             ..inner
         };
         frame.render_widget(
             Paragraph::new(graph_label).style(style_fg(c_graph_text())),
-            Rect { height: 1, ..graph },
+            graph,
         );
         let chart = Rect {
             y: graph.y + 1,
-            height: graph.height.saturating_sub(1),
-            ..graph
+            height: inner
+                .height
+                .saturating_sub(6 + u16::from(power.note.is_some())),
+            ..inner
         };
         if current_watts.is_some() && !graph_history.is_empty() && chart.height > 0 {
-            let max = graph_history.iter().copied().max().unwrap_or(1).max(1);
-            draw_braille_gradient(
-                frame,
-                chart,
-                graph_history,
-                max.saturating_add(max / 4).max(1),
-                cpu_gradient,
-                false,
-            );
+            // ponytail: scale to current power so quiet readings fill chart; old peaks can clip.
+            let max = current_watts
+                .filter(|watts| watts.is_finite() && *watts >= 0.0)
+                .map(|watts| (watts * 1250.0).ceil() as u64)
+                .unwrap_or_else(|| graph_history.iter().copied().max().unwrap_or(1))
+                .max(1);
+            draw_braille_gradient(frame, chart, graph_history, max, cpu_gradient, false);
         }
     }
     if let Some(note) = &power.note {
@@ -3493,6 +3529,381 @@ fn draw_power(frame: &mut ratatui::Frame<'_>, area: Rect, view: &AppView) {
             },
         );
     }
+}
+
+/// Braille fan (30×15 cells = 60×60 dots). Dots within `FAN_ROTOR_RADIUS` of
+/// the center are the rotor and spin; the ring and corner screws stay fixed.
+pub const FAN_ART: [&str; 15] = [
+    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+    "⠀⠀⣿⣿⡆⠀⠀⢀⣤⠶⠟⠛⠉⠉⠉⠉⠉⠉⠛⠻⠶⣤⡀⠀⠀⠰⣿⣿⠀⠀",
+    "⠀⠀⠀⠁⠀⣠⠞⢋⣠⣶⣿⣿⣿⡄⠀⠀⠀⢻⣿⣿⣶⣄⡙⠳⣄⠀⠈⠁⠀⠀",
+    "⠀⠀⠀⢀⡾⠁⢰⣿⣿⣿⣿⣿⣿⣷⠀⠀⠀⢸⣿⣿⣿⣿⣿⠄⠈⢷⡀⠀⠀⠀",
+    "⠀⠀⢠⡟⠀⠀⠀⠈⠉⠛⢿⣿⣿⣿⡇⠀⠀⢸⣿⣿⣿⣿⠋⠀⠀⠀⢻⡄⠀⠀",
+    "⠀⢀⣿⠁⢀⣀⣀⡀⠀⠀⠀⠈⠻⠟⠛⠀⠀⢿⣿⣿⠟⠁⠀⠀⠀⣀⠈⣿⡀⠀",
+    "⠀⢸⡇⢰⣿⣿⣿⣿⣿⣷⣶⠀⣀⠘⢉⡀⠳⡄⠉⠁⠀⠀⣠⣴⣿⣿⡇⢸⡇⠀",
+    "⠀⢸⡇⢸⣿⣿⣿⣿⣿⡿⠿⠀⠇⠰⣿⣿⠆⢰⠀⣶⣾⣿⣿⣿⣿⣿⡇⢸⡇⠀",
+    "⠀⢸⡇⢸⣿⣿⠟⠋⠀⠀⢀⣀⠘⢦⠈⣁⡄⠉⠀⠿⢿⣿⣿⣿⣿⣿⠇⢸⡇⠀",
+    "⠀⠈⣿⡀⠉⠀⠀⠀⢀⣴⣿⣿⣷⠀⠀⣤⣴⣦⡀⠀⠀⠀⠈⠉⠉⠁⢀⣿⠁⠀",
+    "⠀⠀⠘⣧⠀⠀⠀⣠⣿⣿⣿⣿⡇⠀⠀⢸⣿⣿⣿⣷⣤⣀⡀⠀⠀⠀⣼⠃⠀⠀",
+    "⠀⠀⠀⠈⢷⡀⠐⣿⣿⣿⣿⣿⡇⠀⠀⠀⢿⣿⣿⣿⣿⣿⣿⠇⢀⡾⠁⠀⠀⠀",
+    "⠀⠀⢀⡀⠀⠙⢦⣌⠙⠿⣿⣿⣇⠀⠀⠀⠘⣿⣿⣿⠿⠋⣡⡴⠋⠀⢀⡀⠀⠀",
+    "⠀⠀⣿⣿⠀⠀⠀⠈⠛⠶⣦⣤⣀⣀⣀⣀⣀⣀⣤⣴⠶⠛⠁⠀⠀⠐⣿⣿⠀⠀",
+    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠉⠉⠉⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+];
+const FAN_DOTS_W: usize = 60;
+const FAN_DOTS_H: usize = 60;
+/// Measured from the art: rotor dots reach r≈23.9, the ring starts at r≈25.
+const FAN_ROTOR_RADIUS: f64 = 24.0;
+/// Braille dot → bit, indexed [dy][dx] (Unicode braille layout).
+const BRAILLE_BITS: [[u8; 2]; 4] = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]];
+
+/// Source art decoded once into a 60×60 dot bitmap (row-major).
+fn fan_bitmap() -> &'static [bool; FAN_DOTS_W * FAN_DOTS_H] {
+    static BITMAP: std::sync::OnceLock<[bool; FAN_DOTS_W * FAN_DOTS_H]> =
+        std::sync::OnceLock::new();
+    BITMAP.get_or_init(|| {
+        let mut dots = [false; FAN_DOTS_W * FAN_DOTS_H];
+        for (cy, row) in FAN_ART.iter().enumerate() {
+            for (cx, ch) in row.chars().enumerate() {
+                let bits = (ch as u32).wrapping_sub(0x2800) as u8;
+                for (dy, bit_row) in BRAILLE_BITS.iter().enumerate() {
+                    for (dx, bit) in bit_row.iter().enumerate() {
+                        dots[(cy * 4 + dy) * FAN_DOTS_W + cx * 2 + dx] = bits & bit != 0;
+                    }
+                }
+            }
+        }
+        dots
+    })
+}
+
+fn fan_source_dot(x: i64, y: i64) -> bool {
+    if x < 0 || y < 0 || x >= FAN_DOTS_W as i64 || y >= FAN_DOTS_H as i64 {
+        return false;
+    }
+    fan_bitmap()[y as usize * FAN_DOTS_W + x as usize]
+}
+
+/// One rendered fan row: braille text plus a per-cell "belongs to rotor" flag
+/// so callers can color the spinning blades separately from the frame.
+pub struct FanArtRow {
+    pub text: String,
+    pub blade: Vec<bool>,
+}
+
+/// Rasterize the fan into `cols`×`rows` braille cells with the rotor rotated
+/// by `angle` radians. Nearest-neighbour sampling; at 30×15 and angle 0 the
+/// output is exactly `FAN_ART`.
+pub fn fan_art_rows(cols: usize, rows: usize, angle: f64) -> Vec<FanArtRow> {
+    let (sin, cos) = (-angle).sin_cos();
+    let (cx, cy) = (FAN_DOTS_W as f64 / 2.0, FAN_DOTS_H as f64 / 2.0);
+    let (tw, th) = ((cols * 2).max(1) as f64, (rows * 4).max(1) as f64);
+    (0..rows)
+        .map(|row| {
+            let mut text = String::with_capacity(cols * 3);
+            let mut blade = Vec::with_capacity(cols);
+            for col in 0..cols {
+                let mut bits = 0u8;
+                let mut rotor = false;
+                for (dy, bit_row) in BRAILLE_BITS.iter().enumerate() {
+                    for (dx, bit) in bit_row.iter().enumerate() {
+                        let u = ((col * 2 + dx) as f64 + 0.5) / tw * FAN_DOTS_W as f64 - cx;
+                        let v = ((row * 4 + dy) as f64 + 0.5) / th * FAN_DOTS_H as f64 - cy;
+                        let inside = u.hypot(v) < FAN_ROTOR_RADIUS;
+                        let (su, sv) = if inside {
+                            (u * cos - v * sin, u * sin + v * cos)
+                        } else {
+                            (u, v)
+                        };
+                        if fan_source_dot((su + cx).floor() as i64, (sv + cy).floor() as i64) {
+                            bits |= bit;
+                            rotor |= inside;
+                        }
+                    }
+                }
+                text.push(char::from_u32(0x2800 + bits as u32).unwrap_or(' '));
+                blade.push(rotor);
+            }
+            FanArtRow { text, blade }
+        })
+        .collect()
+}
+
+thread_local! {
+    /// Per-fan rotor phase (radians) + last draw time, so a speed change
+    /// continues from the current angle instead of jumping.
+    static FAN_PHASE: std::cell::RefCell<(Option<std::time::Instant>, Vec<f64>)> =
+        const { std::cell::RefCell::new((None, Vec::new())) };
+}
+
+/// Advance every fan's phase by elapsed time × speed. Speed scales with duty
+/// (0 → stopped) and is capped at 1.2 rev/s so the 5-blade rotor never
+/// strobes backwards at the ~20 fps redraw rate (6 blades → 60° symmetry,
+/// 1.2 rev/s ≈ 22°/frame).
+fn fan_phases(speeds: &[f32]) -> Vec<f64> {
+    FAN_PHASE.with(|cell| {
+        let mut state = cell.borrow_mut();
+        let now = std::time::Instant::now();
+        let dt = state
+            .0
+            .map(|t| now.duration_since(t).as_secs_f64().min(0.25))
+            .unwrap_or(0.0);
+        state.0 = Some(now);
+        state.1.resize(speeds.len(), 0.0);
+        for (phase, pct) in state.1.iter_mut().zip(speeds) {
+            let rev_per_sec = if *pct <= 0.0 {
+                0.0
+            } else {
+                0.15 + (*pct as f64 / 100.0).clamp(0.0, 1.0) * 1.05
+            };
+            *phase = (*phase + dt * rev_per_sec * std::f64::consts::TAU) % std::f64::consts::TAU;
+        }
+        state.1.clone()
+    })
+}
+
+/// Vertical cells a fan box spends on chrome: 2 borders + RPM line + gap +
+/// gap + meter. Horizontal: 2 borders + 1 cell padding each side.
+const FAN_BOX_CHROME_H: usize = 6;
+const FAN_BOX_CHROME_W: usize = 4;
+
+/// Largest fan art (in braille rows; cols = 2×rows keeps it round) that fits
+/// a `w`×`h` box.
+fn fan_art_size(w: usize, h: usize) -> usize {
+    h.saturating_sub(FAN_BOX_CHROME_H)
+        .min(w.saturating_sub(FAN_BOX_CHROME_W) / 2)
+}
+
+/// Pick `(cols, rows)` for `n` fans in a `w`×`h` area so every fan is drawn
+/// as large as possible. Ties go to fewer columns (earlier candidate).
+pub fn fan_grid(n: usize, w: u16, h: u16) -> (usize, usize) {
+    let n = n.max(1);
+    let best = (1..=n)
+        .map(|cols| {
+            let rows = n.div_ceil(cols);
+            let size = fan_art_size(w as usize / cols, h as usize / rows);
+            (cols, rows, size)
+        })
+        .fold((1, n, 0), |best, (cols, rows, size)| {
+            if size > best.2 {
+                (cols, rows, size)
+            } else {
+                best
+            }
+        });
+    (best.0, best.1)
+}
+
+fn draw_fans(frame: &mut ratatui::Frame<'_>, area: Rect, view: &AppView) {
+    let block = btop_block("fans", c_gpu_box());
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    match view.snapshot.fans.status {
+        FanStatus::NoFan => draw_fan_banner(frame, inner, "NO FAN"),
+        FanStatus::NotRoot => draw_fan_banner(frame, inner, "NOT ROOT"),
+        FanStatus::Unavailable => frame.render_widget(
+            Paragraph::new("FAN DATA UNAVAILABLE")
+                .alignment(Alignment::Center)
+                .style(style_bold(c_hi_fg())),
+            Rect {
+                y: inner.y + inner.height / 2,
+                height: 1,
+                ..inner
+            },
+        ),
+        FanStatus::Available => {
+            let fans = &view.snapshot.fans.fans;
+            if fans.is_empty() {
+                frame.render_widget(
+                    Paragraph::new("FAN DATA UNAVAILABLE")
+                        .alignment(Alignment::Center)
+                        .style(style_bold(c_hi_fg())),
+                    Rect {
+                        y: inner.y + inner.height / 2,
+                        height: 1,
+                        ..inner
+                    },
+                );
+                return;
+            }
+            let percents: Vec<f32> = fans
+                .iter()
+                .map(|fan| {
+                    fan.max_rpm
+                        .filter(|max| *max > 0.0)
+                        .map(|max| (fan.rpm / max * 100.0).clamp(0.0, 100.0))
+                        // No max reported: still spin if the fan is turning.
+                        .unwrap_or(if fan.rpm > 0.0 { 50.0 } else { 0.0 })
+                })
+                .collect();
+            let phases = fan_phases(&percents);
+            let (cols, rows) = fan_grid(fans.len(), inner.width, inner.height);
+            let cell_w = inner.width / cols as u16;
+            let cell_h = inner.height / rows as u16;
+            for (index, fan) in fans.iter().enumerate() {
+                let (row, col) = (index / cols, index % cols);
+                // Center a short last row instead of left-packing it.
+                let in_row = (fans.len() - row * cols).min(cols) as u16;
+                let row_x = inner.x + (inner.width - in_row * cell_w) / 2;
+                // Last row/column absorb the division remainder.
+                let tile = Rect {
+                    x: row_x + col as u16 * cell_w,
+                    y: inner.y + row as u16 * cell_h,
+                    width: if in_row == cols as u16 && col + 1 == cols {
+                        inner.right() - (row_x + col as u16 * cell_w)
+                    } else {
+                        cell_w
+                    },
+                    height: if row + 1 == rows {
+                        inner.bottom() - (inner.y + row as u16 * cell_h)
+                    } else {
+                        cell_h
+                    },
+                };
+                draw_fan_tile(frame, tile, fan, percents[index], phases[index]);
+            }
+        }
+    }
+}
+
+fn draw_fan_tile(
+    frame: &mut ratatui::Frame<'_>,
+    tile: Rect,
+    fan: &crate::model::FanSnapshot,
+    percent: f32,
+    phase: f64,
+) {
+    let block = btop_block(&fan.name, c_gpu_box());
+    let inner = block.inner(tile);
+    frame.render_widget(block, tile);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    let art_rows = fan_art_size(tile.width as usize, tile.height as usize).max(2);
+    let art_cols = art_rows * 2;
+    // RPM line + gap + art + gap + meter, vertically centered.
+    let content_h = (art_rows as u16 + 4).min(inner.height);
+    let top = inner.y + (inner.height - content_h) / 2;
+    let line = |y: u16| Rect {
+        x: inner.x,
+        y,
+        width: inner.width,
+        height: 1,
+    };
+
+    let label = format!(
+        "{:.0} RPM{}  {:.0}%",
+        fan.rpm,
+        fan.max_rpm
+            .map(|max| format!(" / {:.0}", max))
+            .unwrap_or_default(),
+        percent
+    );
+    frame.render_widget(
+        Paragraph::new(label)
+            .alignment(Alignment::Center)
+            .style(style_bold(c_main_fg())),
+        line(top),
+    );
+
+    let art_y = top + 2;
+    let art_h = (art_rows as u16).min(inner.bottom().saturating_sub(art_y));
+    if art_h > 0 {
+        // Write straight into the buffer: a Span + String per cell (≈13k
+        // cells at full screen) cost 5 ms release / 25 ms debug per frame.
+        let blade_style = style_fg(cpu_gradient(percent));
+        let frame_style = style_fg(c_main_fg());
+        let art_x = inner.x + inner.width.saturating_sub(art_cols as u16) / 2;
+        let max_cols = inner.right().saturating_sub(art_x) as usize;
+        let buf = frame.buffer_mut();
+        for (dy, row) in fan_art_rows(art_cols, art_rows, phase)
+            .into_iter()
+            .take(art_h as usize)
+            .enumerate()
+        {
+            for (dx, (ch, blade)) in row.text.chars().zip(row.blade).take(max_cols).enumerate() {
+                if let Some(cell) = buf.cell_mut((art_x + dx as u16, art_y + dy as u16)) {
+                    cell.set_char(ch)
+                        .set_style(if blade { blade_style } else { frame_style });
+                }
+            }
+        }
+    }
+
+    let meter_y = art_y + art_rows as u16 + 1;
+    if meter_y < inner.bottom() {
+        let meter_width = art_cols.min(inner.width as usize).max(4);
+        frame.render_widget(
+            Paragraph::new(Line::from(meter_spans(percent, meter_width, cpu_gradient)))
+                .alignment(Alignment::Center),
+            line(meter_y),
+        );
+    }
+}
+
+fn draw_fan_banner(frame: &mut ratatui::Frame<'_>, area: Rect, message: &str) {
+    const N: [&str; 7] = [
+        "10001", "11001", "10101", "10101", "10011", "10011", "10001",
+    ];
+    const O: [&str; 7] = [
+        "01110", "10001", "10001", "10001", "10001", "10001", "01110",
+    ];
+    const F: [&str; 7] = [
+        "11111", "10000", "10000", "11110", "10000", "10000", "10000",
+    ];
+    const A: [&str; 7] = [
+        "01110", "10001", "10001", "11111", "10001", "10001", "10001",
+    ];
+    const T: [&str; 7] = [
+        "11111", "00100", "00100", "00100", "00100", "00100", "00100",
+    ];
+    const R: [&str; 7] = [
+        "11110", "10001", "10001", "11110", "10100", "10010", "10001",
+    ];
+    const SPACE: [&str; 7] = ["00000"; 7];
+    let glyph_width = message.chars().count() * 5 + message.chars().count().saturating_sub(1) * 2;
+    let scale = (area.width as usize / glyph_width.max(1))
+        .min(area.height as usize / 7)
+        .max(1);
+    let glyph = |ch| match ch {
+        'N' => &N,
+        'O' => &O,
+        'F' => &F,
+        'A' => &A,
+        'T' => &T,
+        'R' => &R,
+        ' ' => &SPACE,
+        _ => &N,
+    };
+    let rows = (0..7)
+        .flat_map(|row| {
+            let mut line = String::new();
+            for (index, ch) in message.chars().enumerate() {
+                if index > 0 {
+                    line.push_str("  ");
+                }
+                for pixel in glyph(ch)[row].bytes() {
+                    let cell = if pixel == b'1' { "█" } else { " " };
+                    line.push_str(&cell.repeat(scale));
+                }
+            }
+            std::iter::repeat_n(line, scale)
+        })
+        .map(|line| Line::from(line).style(style_bold(c_hi_fg())))
+        .collect::<Vec<_>>();
+    let banner_height = (7 * scale) as u16;
+    let y = area.y + area.height.saturating_sub(banner_height) / 2;
+    let height = area.height.min(banner_height);
+    frame.render_widget(
+        Paragraph::new(rows)
+            .alignment(Alignment::Center)
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+        Rect { y, height, ..area },
+    );
 }
 
 /// Local wall-clock time of a snapshot as HH:MM:SS (btop cpu box clock).
@@ -3793,7 +4204,21 @@ fn draw_cpu(frame: &mut ratatui::Frame<'_>, area: Rect, view: &AppView) {
         if row_y >= rail_area.y + rail_area.height {
             break;
         }
-        let label = format!("C{i:<2} ");
+        let topology_matches = cpu
+            .performance_core_count
+            .zip(cpu.efficiency_core_count)
+            .is_some_and(|(p, e)| p.saturating_add(e) == cpu.per_core_percent.len());
+        // Apple Silicon enumerates efficiency cores before performance cores.
+        let label = if topology_matches {
+            let e_cores = cpu.efficiency_core_count.unwrap_or_default();
+            if i < e_cores {
+                format!("E{i:<2} ")
+            } else {
+                format!("P{:<2} ", i - e_cores)
+            }
+        } else {
+            format!("C{i:<2} ")
+        };
         let lw = label.len();
         let mw = (rail_area.width as usize)
             .saturating_sub(lw + 6 + temp_w as usize)
@@ -5250,7 +5675,7 @@ pub fn help_rows(vim: bool) -> Vec<(&'static str, &'static str)> {
         ("F5", "Refresh now."),
         ("ctrl + r", "Reloads config file from disk."),
         (
-            "Tab, Shift+Tab",
+            "Tab, Shift+Tab, Alt+Left/Right",
             "Switch dashboard pages; click a tab to open it.",
         ),
         ("Spacebar", "Pause / resume all updates."),
@@ -5384,6 +5809,9 @@ fn process_nice(_pid: u32) -> String {
     "-".to_owned()
 }
 
+/// Redraw cadence (~20 fps) — drives the fan animation and input latency.
+const FRAME_INTERVAL: Duration = Duration::from_millis(50);
+
 pub fn run_tui(
     receiver: SnapshotReceiver,
     commands: CollectorCommandSender,
@@ -5398,7 +5826,10 @@ pub fn run_tui(
             return Err(e.into());
         }
     };
-    let backend = CrosstermBackend::new(stdout());
+    // One buffered write per frame instead of LineWriter's ~1 KiB chunks:
+    // the animated fan page emits ~20 KiB/frame and chunked writes let the
+    // terminal paint half-finished frames.
+    let backend = CrosstermBackend::new(io::BufWriter::with_capacity(1 << 16, stdout()));
     let mut terminal = match Terminal::new(backend) {
         Ok(t) => t,
         Err(e) => {
@@ -5411,17 +5842,23 @@ pub fn run_tui(
             crate::ratty::write_panel_registrations(stdout())?;
         }
         let mut previous_ratty_panels = 0;
+        let mut quit = false;
         loop {
             if !view.paused {
                 let _ = view.accept_snapshot(receiver.latest());
             }
             let mut current_ratty_panels = 0;
+            let frame_started = std::time::Instant::now();
+            // Synchronized update (DEC 2026): the terminal presents the frame
+            // atomically; terminals without support ignore the sequence.
+            queue!(terminal.backend_mut(), BeginSynchronizedUpdate)?;
             terminal.draw(|f| {
                 if view.ratty_3d {
                     current_ratty_panels = ratty_dashboard_panel_areas(f.area(), &view).len();
                 }
                 draw_dashboard(f, &view);
             })?;
+            execute!(terminal.backend_mut(), EndSynchronizedUpdate)?;
             if view.ratty_3d && current_ratty_panels < previous_ratty_panels {
                 crate::ratty::write_panel_deletes(
                     stdout(),
@@ -5430,7 +5867,17 @@ pub fn run_tui(
                 )?;
             }
             previous_ratty_panels = current_ratty_panels;
-            if event::poll(Duration::from_millis(50))? {
+            // Fixed cadence: wait out the rest of the frame budget instead of
+            // a flat 50 ms after drawing (which made the period draw+50 ms and
+            // jittery). Then drain every queued event before the next draw so
+            // a burst of mouse moves costs one redraw, not one per event.
+            let deadline = frame_started + FRAME_INTERVAL;
+            let mut wait = deadline.saturating_duration_since(std::time::Instant::now());
+            // Cap the drain so a continuous mouse-move stream can't starve redraws.
+            let mut drained = 0;
+            while drained < 64 && event::poll(wait)? {
+                wait = Duration::ZERO;
+                drained += 1;
                 match event::read()? {
                     Event::Mouse(m) => {
                         let size = terminal.size()?;
@@ -5451,7 +5898,7 @@ pub fn run_tui(
                         }
                     }
                     Event::Key(key) => match view.feed_key(key) {
-                        KeyOutcome::Quit => break,
+                        KeyOutcome::Quit => quit = true,
                         KeyOutcome::WireRefresh => {
                             let _ = commands.try_sync_interval(view.refresh_interval, view.paused);
                         }
@@ -5499,6 +5946,12 @@ pub fn run_tui(
                     },
                     _ => {}
                 }
+                if quit {
+                    break;
+                }
+            }
+            if quit {
+                break;
             }
         }
         Ok::<(), anyhow::Error>(())

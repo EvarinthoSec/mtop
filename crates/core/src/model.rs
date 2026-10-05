@@ -16,6 +16,7 @@ pub struct SystemSnapshot {
     pub gpus: Vec<GpuSnapshot>,
     pub npus: Vec<NpuSnapshot>,
     pub power: PowerSnapshot,
+    pub fans: FanTelemetry,
     /// Primary battery, if the machine has one.
     pub battery: Option<BatterySnapshot>,
     pub warnings: Vec<String>,
@@ -36,6 +37,7 @@ impl Default for SystemSnapshot {
             gpus: Vec::new(),
             npus: Vec::new(),
             power: PowerSnapshot::default(),
+            fans: FanTelemetry::default(),
             battery: None,
             warnings: Vec::new(),
         }
@@ -47,6 +49,9 @@ pub struct CpuSnapshot {
     pub available: bool,
     pub overall_percent: f32,
     pub per_core_percent: Vec<f32>,
+    /// Apple Silicon logical CPU counts for each performance level.
+    pub performance_core_count: Option<usize>,
+    pub efficiency_core_count: Option<usize>,
     pub frequency_mhz: Option<u64>,
     /// CPU brand name e.g. "Intel Core i7-5775C"
     pub cpu_name: Option<String>,
@@ -139,6 +144,28 @@ pub struct PowerSnapshot {
     pub package_watts: Option<f32>,
     /// Explains permission or platform limits when no power source is active.
     pub note: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FanStatus {
+    Available,
+    NoFan,
+    NotRoot,
+    #[default]
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FanSnapshot {
+    pub name: String,
+    pub rpm: f32,
+    pub max_rpm: Option<f32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FanTelemetry {
+    pub status: FanStatus,
+    pub fans: Vec<FanSnapshot>,
 }
 
 /// Battery charge direction as btop shows it (▲ charging, ▼ discharging).
